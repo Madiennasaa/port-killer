@@ -48,6 +48,9 @@ var systemProcs = map[string]bool{
 // ---------- Messages ----------
 type tickMsg time.Time
 type portsMsg []PortItem
+
+const msgHealthPanic = "Health check panic, dilewati siklus ini."
+
 type actionMsg struct {
 	item  PortItem
 	force bool
@@ -297,8 +300,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.health[k] = r
 		}
 		if msg.panicked {
-			m.message, m.isErr = "Health check panic, dilewati siklus ini.", true
-		} else if m.message == "Health check panic, dilewati siklus ini." {
+			m.message, m.isErr = msgHealthPanic, true
+		} else if m.message == msgHealthPanic {
 			m.message, m.isErr = "", false
 		}
 		m.applyHealth()
