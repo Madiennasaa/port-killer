@@ -298,6 +298,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.panicked {
 			m.message, m.isErr = "Health check panic, dilewati siklus ini.", true
+		} else if m.message == "Health check panic, dilewati siklus ini." {
+			m.message, m.isErr = "", false
 		}
 		m.applyHealth()
 		m.rebuild()
@@ -572,7 +574,7 @@ func (m model) View() string {
 		footerItem("F8", "Force "),
 		footerItem("F9", "Kill "),
 		footerItem("o", "Orphan "),
-		footerItem("X", "Bersih-orphan "),
+		footerItem("X", "Bersih "),
 		footerItem("F10", "Keluar "),
 	}, ""))
 
