@@ -65,8 +65,8 @@ func healthCmd(items []PortItem) tea.Cmd {
 	copy(snap, items)
 	return func() (msg tea.Msg) {
 		defer func() {
-			if recover() != nil {
-				msg = healthResultMsg{results: map[string]healthResult{}}
+			if r := recover(); r != nil {
+				msg = healthResultMsg{results: map[string]healthResult{}, panicked: true}
 			}
 		}()
 		msg = healthResultMsg{results: CheckHealth(snap)}
@@ -237,11 +237,14 @@ func (m *model) askKill(force bool) {
 }
 
 func orphanItems(all []PortItem) []PortItem {
+	seen := map[string]bool{}
 	var out []PortItem
 	for _, it := range all {
-		if it.Orphan && !it.IsDocker() {
-			out = append(out, it)
+		if !it.Orphan || it.IsDocker() || seen[it.PID] {
+			continue
 		}
+		seen[it.PID] = true
+		out = append(out, it)
 	}
 	return out
 }
@@ -292,6 +295,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for k, r := range msg.results {
 			m.health[k] = r
+		}
+		if msg.panicked {
+			m.message, m.isErr = "Health check panic, dilewati siklus ini.", true
 		}
 		m.applyHealth()
 		m.rebuild()
@@ -353,8 +359,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeNormal
 			m.filter = ""
 		case "backspace":
-			if len(m.filter) > 0 {
-				m.filter = m.filter[:len(m.filter)-1]
+			r := []rune(m.filter)
+			if len(r) > 0 {
+				m.filter = string(r[:len(r)-1])
 			}
 		case "ctrl+c":
 			return m, tea.Quit
@@ -465,8 +472,8 @@ func healthText(it PortItem) string {
 func (m model) View() string {
 	var b strings.Builder
 
-	// Header kolom
-	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
+	// Header kolom (kolom pertama = marker orphan 1 rune + PROTO)
+	head := fmt.Sprintf("  %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
 	// Baris

@@ -23,7 +23,8 @@ type healthResult struct {
 }
 
 type healthResultMsg struct {
-	results map[string]healthResult
+	results  map[string]healthResult
+	panicked bool
 }
 
 // healthKey menyatukan hasil health dengan item hasil refresh.

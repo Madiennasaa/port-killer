@@ -78,10 +78,11 @@ func GetActivePorts() []PortItem {
 	items = append(items, GetDockerPorts()...)
 	fillUptime(items)
 	cache := make(map[string][2]string) // pid -> {cwd, project}
+	orphanCache := map[string]bool{}
 	for i := range items {
 		if items[i].IsDocker() {
 			enrichProject(&items[i])
-			enrichOrphan(&items[i])
+			items[i].Orphan = false
 			continue
 		}
 		if v, ok := cache[items[i].PID]; ok {
@@ -90,7 +91,12 @@ func GetActivePorts() []PortItem {
 			enrichProject(&items[i])
 			cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
 		}
+		if v, ok := orphanCache[items[i].PID]; ok {
+			items[i].Orphan = v
+			continue
+		}
 		enrichOrphan(&items[i])
+		orphanCache[items[i].PID] = items[i].Orphan
 	}
 	return items
 }

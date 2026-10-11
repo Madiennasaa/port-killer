@@ -2,8 +2,8 @@ package main
 
 import (
 	"net"
+	"strconv"
 	"testing"
-	"time"
 )
 
 func TestDialTarget(t *testing.T) {
@@ -39,8 +39,8 @@ func TestCheckHealthAlive(t *testing.T) {
 		t.Skip("no tcp")
 	}
 	defer l.Close()
-	port := l.Addr().(*net.TCPAddr).Port
-	items := []PortItem{{Proto: "tcp", Addr: "0.0.0.0", Port: itoa(port), PID: "1"}}
+	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+	items := []PortItem{{Proto: "tcp", Addr: "0.0.0.0", Port: port, PID: "1"}}
 	go func() {
 		for {
 			c, err := l.Accept()
@@ -51,11 +51,10 @@ func TestCheckHealthAlive(t *testing.T) {
 		}
 	}()
 	res := CheckHealth(items)
-	k := healthKey("tcp", "0.0.0.0", itoa(port), "1")
+	k := healthKey("tcp", "0.0.0.0", port, "1")
 	if res[k].status != HealthAlive {
 		t.Fatalf("got %+v", res[k])
 	}
-	_ = time.Now()
 }
 
 func TestApplyHealth(t *testing.T) {
@@ -80,14 +79,16 @@ func TestApplyHealth(t *testing.T) {
 	}
 }
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
+func TestOrphanItemsDedup(t *testing.T) {
+	all := []PortItem{
+		{Proto: "tcp", Port: "3000", PID: "42", Process: "node", Orphan: true, Source: "host"},
+		{Proto: "udp", Port: "3000", PID: "42", Process: "node", Orphan: true, Source: "host"},
+		{Proto: "tcp", Port: "3001", PID: "43", Process: "node", Orphan: true, Source: "host"},
+		{Proto: "tcp", Port: "3002", PID: "abc", Process: "docker:web", Orphan: true, Source: "docker"},
+		{Proto: "tcp", Port: "3003", PID: "44", Process: "node", Orphan: false, Source: "host"},
 	}
-	s := ""
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
+	got := orphanItems(all)
+	if len(got) != 2 || got[0].PID != "42" || got[1].PID != "43" {
+		t.Fatalf("got %+v", got)
 	}
-	return s
 }
