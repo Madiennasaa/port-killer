@@ -10,12 +10,16 @@ import (
 )
 
 type PortItem struct {
+	Proto   string
+	Addr    string
 	Port    string
 	Process string
 	PID     string
 }
 
 func GetActivePorts() []PortItem {
+	var items []PortItem
+
 	cmd := exec.Command("ss", "-tulnp")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -23,39 +27,39 @@ func GetActivePorts() []PortItem {
 		return GetDockerPorts()
 	}
 
-	var items []PortItem
 	seen := make(map[string]bool)
-
 	for _, line := range strings.Split(out.String(), "\n") {
-		if !strings.Contains(line, "LISTEN") {
-			continue
-		}
 		fields := strings.Fields(line)
 		if len(fields) < 7 {
 			continue
 		}
+		state := fields[1]
+		if state != "LISTEN" && state != "UNCONN" {
+			continue
+		}
 
+		proto := fields[0]
 		localAddr := fields[4]
-		parts := strings.Split(localAddr, ":")
-		port := parts[len(parts)-1]
+		i := strings.LastIndex(localAddr, ":")
+		if i == -1 {
+			continue
+		}
+		addr, port := localAddr[:i], localAddr[i+1:]
 
 		pid, procName := parseProcessInfo(fields[len(fields)-1])
-		if pid == "" {
+		if pid == "" || procName == "docker-proxy" {
 			continue
 		}
 
-		// Port Docker ditampilkan lewat GetDockerPorts()
-		if procName == "docker-proxy" {
-			continue
-		}
-
-		key := port + "-" + pid
+		key := proto + "-" + port + "-" + pid
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 
 		items = append(items, PortItem{
+			Proto:   proto,
+			Addr:    addr,
 			Port:    port,
 			Process: procName,
 			PID:     pid,
@@ -85,17 +89,27 @@ func GetDockerPorts() []PortItem {
 			if !strings.Contains(p, "->") {
 				continue
 			}
-			hostPart := strings.Split(p, "->")[0]
-			hostParts := strings.Split(hostPart, ":")
-			port := hostParts[len(hostParts)-1]
+			segs := strings.Split(p, "->")
+			hostPart := segs[0]
+			proto := "tcp"
+			if j := strings.LastIndex(segs[1], "/"); j != -1 {
+				proto = segs[1][j+1:]
+			}
+			k := strings.LastIndex(hostPart, ":")
+			if k == -1 {
+				continue
+			}
+			addr, port := hostPart[:k], hostPart[k+1:]
 
-			key := port + "-" + id
+			key := proto + "-" + port + "-" + id
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
 
 			items = append(items, PortItem{
+				Proto:   proto,
+				Addr:    addr,
 				Port:    port,
 				Process: "docker:" + name,
 				PID:     id,
