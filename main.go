@@ -61,7 +61,7 @@ func tickCmd() tea.Cmd {
 func killCmd(item PortItem, force bool) tea.Cmd {
 	return func() tea.Msg {
 		var err error
-		if strings.HasPrefix(item.Process, "docker:") {
+		if item.IsDocker() {
 			err = StopContainer(item.PID)
 		} else {
 			err = KillProcess(item.PID, force)
@@ -108,7 +108,11 @@ func (m *model) rebuild() {
 		if m.proto == 1 && !strings.HasPrefix(it.Proto, "udp") {
 			continue
 		}
-		if f == "" || strings.Contains(strings.ToLower(it.Port+" "+it.Process+" "+it.PID+" "+it.Addr+" "+it.Proto), f) {
+		hay := it.Port + " " + it.Process + " " + it.PID + " " + it.Addr + " " + it.Proto + " " + it.Project
+		if it.Cwd != "-" && it.Cwd != "" {
+			hay += " " + it.Cwd
+		}
+		if f == "" || strings.Contains(strings.ToLower(hay), f) {
 			v = append(v, it)
 		}
 	}
@@ -275,10 +279,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // ---------- View ----------
 func pad(s string, w int) string {
-	if len(s) >= w {
-		return s[:w]
+	r := []rune(s)
+	if len(r) > w {
+		if w <= 1 {
+			return string(r[:w])
+		}
+		return string(r[:w-1]) + "…"
 	}
-	return s + strings.Repeat(" ", w-len(s))
+	return s + strings.Repeat(" ", w-len(r))
 }
 
 func (m model) fullWidth(st lipgloss.Style, s string) string {
@@ -307,7 +315,7 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Header kolom
-	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROCESS")
+	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
 	// Baris
@@ -323,8 +331,8 @@ func (m model) View() string {
 		if len(pid) > 8 {
 			pid = pid[:8]
 		}
-		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %s",
-			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), it.Process)
+		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %s",
+			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), it.Process)
 
 		st := normalStyle
 		switch {

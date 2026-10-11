@@ -16,7 +16,12 @@ type PortItem struct {
 	Process string
 	PID     string
 	Uptime  string
+	Source  string
+	Cwd     string
+	Project string
 }
+
+func (p PortItem) IsDocker() bool { return p.Source == "docker" }
 
 func GetActivePorts() []PortItem {
 	var items []PortItem
@@ -24,51 +29,63 @@ func GetActivePorts() []PortItem {
 	cmd := exec.Command("ss", "-tulnp")
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return GetDockerPorts()
-	}
+	if err := cmd.Run(); err == nil {
+		seen := make(map[string]bool)
+		for _, line := range strings.Split(out.String(), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 7 {
+				continue
+			}
+			state := fields[1]
+			if state != "LISTEN" && state != "UNCONN" {
+				continue
+			}
 
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(out.String(), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 7 {
-			continue
-		}
-		state := fields[1]
-		if state != "LISTEN" && state != "UNCONN" {
-			continue
-		}
+			proto := fields[0]
+			localAddr := fields[4]
+			i := strings.LastIndex(localAddr, ":")
+			if i == -1 {
+				continue
+			}
+			addr, port := localAddr[:i], localAddr[i+1:]
 
-		proto := fields[0]
-		localAddr := fields[4]
-		i := strings.LastIndex(localAddr, ":")
-		if i == -1 {
-			continue
-		}
-		addr, port := localAddr[:i], localAddr[i+1:]
+			pid, procName := parseProcessInfo(fields[len(fields)-1])
+			if pid == "" || procName == "docker-proxy" {
+				continue
+			}
 
-		pid, procName := parseProcessInfo(fields[len(fields)-1])
-		if pid == "" || procName == "docker-proxy" {
-			continue
-		}
+			key := proto + "-" + port + "-" + pid
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 
-		key := proto + "-" + port + "-" + pid
-		if seen[key] {
-			continue
+			items = append(items, PortItem{
+				Proto:   proto,
+				Addr:    addr,
+				Port:    port,
+				Process: procName,
+				PID:     pid,
+				Source:  "host",
+			})
 		}
-		seen[key] = true
-
-		items = append(items, PortItem{
-			Proto:   proto,
-			Addr:    addr,
-			Port:    port,
-			Process: procName,
-			PID:     pid,
-		})
 	}
 
 	items = append(items, GetDockerPorts()...)
 	fillUptime(items)
+	cache := make(map[string][2]string) // pid -> {cwd, project}
+	for i := range items {
+		if items[i].IsDocker() {
+			enrichProject(&items[i])
+			continue
+		}
+		if v, ok := cache[items[i].PID]; ok {
+			items[i].Cwd, items[i].Project = v[0], v[1]
+			continue
+		}
+		enrichProject(&items[i])
+		cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
+	}
 	return items
 }
 
@@ -144,6 +161,7 @@ func GetDockerPorts() []PortItem {
 				Process: "docker:" + name,
 				PID:     id,
 				Uptime:  uptime,
+				Source:  "docker",
 			})
 		}
 	}
