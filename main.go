@@ -21,6 +21,7 @@ const (
 )
 
 var sortNames = []string{"PORT", "PROCESS", "PID", "PROTO"}
+var protoNames = []string{"TCP", "UDP", "ALL"}
 
 // ---------- Styles ----------
 var (
@@ -78,6 +79,7 @@ type model struct {
 	filter  string
 	mode    mode
 	sortBy  int
+	proto   int
 	message string
 	isErr   bool
 	target  PortItem
@@ -100,6 +102,12 @@ func (m *model) rebuild() {
 	f := strings.ToLower(m.filter)
 	v := make([]PortItem, 0, len(m.all))
 	for _, it := range m.all {
+		if m.proto == 0 && !strings.HasPrefix(it.Proto, "tcp") {
+			continue
+		}
+		if m.proto == 1 && !strings.HasPrefix(it.Proto, "udp") {
+			continue
+		}
 		if f == "" || strings.Contains(strings.ToLower(it.Port+" "+it.Process+" "+it.PID+" "+it.Addr+" "+it.Proto), f) {
 			v = append(v, it)
 		}
@@ -125,7 +133,7 @@ func (m *model) rebuild() {
 }
 
 func (m model) rows() int {
-	r := m.height - 4 // title + header + footer + status
+	r := m.height - 4 // header + status + info + footer
 	if r < 1 {
 		r = 1
 	}
@@ -244,6 +252,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.filter = ""
 		m.rebuild()
+	case "t", "f4":
+		m.proto = (m.proto + 1) % len(protoNames)
+		m.rebuild()
 	case "r", "f5":
 		return m, refreshCmd
 	case "s", "f6":
@@ -278,23 +289,28 @@ func footerItem(k, l string) string {
 	return keyStyle.Render(k) + labelStyle.Render(pad(l, len(l)))
 }
 
+func sysUptime() string {
+	b, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return "?"
+	}
+	f := strings.Fields(string(b))
+	if len(f) == 0 {
+		return "?"
+	}
+	s, _ := strconv.ParseFloat(f[0], 64)
+	t := int(s)
+	return fmt.Sprintf("%dd %02dh %02dm", t/86400, t%86400/3600, t%3600/60)
+}
+
 func (m model) View() string {
 	var b strings.Builder
 
-	// Title bar
-	root := ""
-	if os.Geteuid() != 0 {
-		root = "  [bukan root: sebagian proses tidak terbaca]"
-	}
-	title := fmt.Sprintf(" PORT KILLER  |  %d port  |  sort: %s  |  filter: %q%s",
-		len(m.view), sortNames[m.sortBy], m.filter, root)
-	b.WriteString(m.fullWidth(titleStyle, title) + "\n")
-
-	// Column header
-	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %s", "PROTO", "ADDRESS", "PORT", "PID", "PROCESS")
+	// Header kolom
+	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
-	// Rows
+	// Baris
 	r := m.rows()
 	end := m.offset + r
 	if end > len(m.view) {
@@ -307,7 +323,8 @@ func (m model) View() string {
 		if len(pid) > 8 {
 			pid = pid[:8]
 		}
-		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %s", it.Proto, pad(it.Addr, 16), it.Port, pid, it.Process)
+		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %s",
+			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), it.Process)
 
 		st := normalStyle
 		switch {
@@ -330,7 +347,7 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	// Status line
+	// Baris status / konfirmasi / filter
 	switch {
 	case m.mode == modeConfirm:
 		verb := "Stop"
@@ -354,16 +371,25 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	// Footer (gaya htop)
-	foot := strings.Join([]string{
+	// Info bar
+	root := ""
+	if os.Geteuid() != 0 {
+		root = " | bukan root"
+	}
+	info := fmt.Sprintf(" %d port | proto: %s | sort: %s | filter: %q | up: %s%s",
+		len(m.view), protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
+	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
+
+	// Footer
+	b.WriteString(strings.Join([]string{
 		footerItem("F3", "Cari "),
+		footerItem("F4", "Proto "),
 		footerItem("F5", "Refresh "),
 		footerItem("F6", "Urut "),
 		footerItem("F8", "Force "),
 		footerItem("F9", "Kill "),
 		footerItem("F10", "Keluar "),
-	}, "")
-	b.WriteString(foot)
+	}, ""))
 
 	return b.String()
 }

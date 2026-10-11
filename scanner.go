@@ -15,6 +15,7 @@ type PortItem struct {
 	Port    string
 	Process string
 	PID     string
+	Uptime  string
 }
 
 func GetActivePorts() []PortItem {
@@ -65,11 +66,39 @@ func GetActivePorts() []PortItem {
 			PID:     pid,
 		})
 	}
-	return append(items, GetDockerPorts()...)
+
+	items = append(items, GetDockerPorts()...)
+	fillUptime(items)
+	return items
+}
+
+func fillUptime(items []PortItem) {
+	var pids []string
+	for _, it := range items {
+		if !strings.HasPrefix(it.Process, "docker:") {
+			pids = append(pids, it.PID)
+		}
+	}
+	if len(pids) == 0 {
+		return
+	}
+	out, _ := exec.Command("ps", "-o", "pid=,etime=", "-p", strings.Join(pids, ",")).Output()
+	m := map[string]string{}
+	for _, l := range strings.Split(string(out), "\n") {
+		f := strings.Fields(l)
+		if len(f) == 2 {
+			m[f[0]] = f[1]
+		}
+	}
+	for i := range items {
+		if u, ok := m[items[i].PID]; ok {
+			items[i].Uptime = u
+		}
+	}
 }
 
 func GetDockerPorts() []PortItem {
-	out, err := exec.Command("docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}").Output()
+	out, err := exec.Command("docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}|{{.Status}}").Output()
 	if err != nil {
 		return nil
 	}
@@ -78,11 +107,12 @@ func GetDockerPorts() []PortItem {
 	seen := make(map[string]bool)
 
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) < 3 {
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) < 4 {
 			continue
 		}
 		id, name, ports := parts[0], parts[1], parts[2]
+		uptime := strings.TrimPrefix(parts[3], "Up ")
 
 		for _, p := range strings.Split(ports, ",") {
 			p = strings.TrimSpace(p)
@@ -113,6 +143,7 @@ func GetDockerPorts() []PortItem {
 				Port:    port,
 				Process: "docker:" + name,
 				PID:     id,
+				Uptime:  uptime,
 			})
 		}
 	}
