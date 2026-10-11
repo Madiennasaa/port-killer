@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -95,4 +96,21 @@ func KillProcess(pid string, force bool) error {
 		sig = syscall.SIGKILL
 	}
 	return syscall.Kill(n, sig)
+}
+
+// Cari container Docker yang mempublikasikan port host tertentu.
+func FindContainerByPort(port string) (string, error) {
+	out, err := exec.Command("docker", "ps", "--filter", "publish="+port, "--format", "{{.ID}}").Output()
+	if err != nil {
+		return "", err
+	}
+	ids := strings.Fields(string(out))
+	if len(ids) == 0 {
+		return "", fmt.Errorf("container tidak ditemukan untuk port %s", port)
+	}
+	return ids[0], nil
+}
+
+func StopContainer(id string) error {
+	return exec.Command("docker", "stop", id).Run()
 }
