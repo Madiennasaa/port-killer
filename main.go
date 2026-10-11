@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -44,12 +45,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			item := m.items[m.cursor]
 			var err error
 
-			if item.Process == "docker-proxy" {
-				var id string
-				id, err = FindContainerByPort(item.Port)
-				if err == nil {
-					err = StopContainer(id)
-				}
+			if strings.HasPrefix(item.Process, "docker:") {
+				err = StopContainer(item.PID)
 			} else {
 				err = KillProcess(item.PID, false)
 			}

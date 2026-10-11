@@ -20,7 +20,7 @@ func GetActivePorts() []PortItem {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		return []PortItem{}
+		return GetDockerPorts()
 	}
 
 	var items []PortItem
@@ -44,6 +44,11 @@ func GetActivePorts() []PortItem {
 			continue
 		}
 
+		// Port Docker ditampilkan lewat GetDockerPorts()
+		if procName == "docker-proxy" {
+			continue
+		}
+
 		key := port + "-" + pid
 		if seen[key] {
 			continue
@@ -55,6 +60,47 @@ func GetActivePorts() []PortItem {
 			Process: procName,
 			PID:     pid,
 		})
+	}
+	return append(items, GetDockerPorts()...)
+}
+
+func GetDockerPorts() []PortItem {
+	out, err := exec.Command("docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}").Output()
+	if err != nil {
+		return nil
+	}
+
+	var items []PortItem
+	seen := make(map[string]bool)
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		id, name, ports := parts[0], parts[1], parts[2]
+
+		for _, p := range strings.Split(ports, ",") {
+			p = strings.TrimSpace(p)
+			if !strings.Contains(p, "->") {
+				continue
+			}
+			hostPart := strings.Split(p, "->")[0]
+			hostParts := strings.Split(hostPart, ":")
+			port := hostParts[len(hostParts)-1]
+
+			key := port + "-" + id
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			items = append(items, PortItem{
+				Port:    port,
+				Process: "docker:" + name,
+				PID:     id,
+			})
+		}
 	}
 	return items
 }
@@ -98,19 +144,10 @@ func KillProcess(pid string, force bool) error {
 	return syscall.Kill(n, sig)
 }
 
-// Cari container Docker yang mempublikasikan port host tertentu.
-func FindContainerByPort(port string) (string, error) {
-	out, err := exec.Command("docker", "ps", "--filter", "publish="+port, "--format", "{{.ID}}").Output()
-	if err != nil {
-		return "", err
-	}
-	ids := strings.Fields(string(out))
-	if len(ids) == 0 {
-		return "", fmt.Errorf("container tidak ditemukan untuk port %s", port)
-	}
-	return ids[0], nil
-}
-
 func StopContainer(id string) error {
-	return exec.Command("docker", "stop", id).Run()
+	out, err := exec.Command("docker", "stop", id).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
