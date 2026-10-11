@@ -54,6 +54,20 @@ type actionMsg struct {
 
 func refreshCmd() tea.Msg { return portsMsg(GetActivePorts()) }
 
+func healthCmd(items []PortItem) tea.Cmd {
+	snap := make([]PortItem, len(items))
+	copy(snap, items)
+	return func() (msg tea.Msg) {
+		defer func() {
+			if recover() != nil {
+				msg = healthResultMsg{results: map[string]healthResult{}}
+			}
+		}()
+		msg = healthResultMsg{results: CheckHealth(snap)}
+		return msg
+	}
+}
+
 func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
@@ -87,13 +101,31 @@ type model struct {
 	busy    bool
 	width   int
 	height  int
+	health  map[string]healthResult
+	hBusy   bool
 }
 
 func initialModel() model {
-	m := model{width: 80, height: 24}
+	m := model{width: 80, height: 24, health: map[string]healthResult{}}
 	m.all = GetActivePorts()
+	m.applyHealth()
 	m.rebuild()
 	return m
+}
+
+func (m *model) applyHealth() {
+	if m.health == nil {
+		m.health = map[string]healthResult{}
+	}
+	for i := range m.all {
+		if r, ok := m.health[healthKey(m.all[i].Proto, m.all[i].Addr, m.all[i].Port, m.all[i].PID)]; ok {
+			m.all[i].Health, m.all[i].Latency = r.status, r.latency
+		} else if strings.HasPrefix(m.all[i].Proto, "udp") {
+			m.all[i].Health = HealthNotApplicable
+		} else {
+			m.all[i].Health = HealthUnknown
+		}
+	}
 }
 
 func (m model) Init() tea.Cmd { return tickCmd() }
@@ -183,7 +215,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case portsMsg:
 		m.all = []PortItem(msg)
+		// Buang hasil usang agar PID reuse tidak mewarisi status lama.
+		if m.health != nil {
+			alive := make(map[string]healthResult, len(m.all))
+			for _, it := range m.all {
+				k := healthKey(it.Proto, it.Addr, it.Port, it.PID)
+				if r, ok := m.health[k]; ok {
+					alive[k] = r
+				}
+			}
+			m.health = alive
+		}
+		m.applyHealth()
 		m.rebuild()
+		if !m.hBusy {
+			m.hBusy = true
+			return m, healthCmd(m.all)
+		}
+		return m, nil
+
+	case healthResultMsg:
+		m.hBusy = false
+		if m.health == nil {
+			m.health = map[string]healthResult{}
+		}
+		for k, r := range msg.results {
+			m.health[k] = r
+		}
+		m.applyHealth()
+		m.rebuild()
+		return m, nil
 
 	case actionMsg:
 		m.busy = false
@@ -311,11 +372,24 @@ func sysUptime() string {
 	return fmt.Sprintf("%dd %02dh %02dm", t/86400, t%86400/3600, t%3600/60)
 }
 
+func healthText(it PortItem) string {
+	switch it.Health {
+	case HealthAlive:
+		return "● " + it.Latency.Truncate(time.Millisecond).String()
+	case HealthDead:
+		return "○ tidak merespons"
+	case HealthNotApplicable:
+		return "-"
+	default:
+		return "…"
+	}
+}
+
 func (m model) View() string {
 	var b strings.Builder
 
 	// Header kolom
-	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "PROCESS")
+	head := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
 	// Baris
@@ -331,8 +405,8 @@ func (m model) View() string {
 		if len(pid) > 8 {
 			pid = pid[:8]
 		}
-		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %s",
-			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), it.Process)
+		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s",
+			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), pad(healthText(it), 16), it.Process)
 
 		st := normalStyle
 		switch {

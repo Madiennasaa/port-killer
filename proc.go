@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -46,6 +47,34 @@ func findProjectRootFrom(path string, exists func(string) bool, home string) str
 	return filepath.Base(path)
 }
 
+// userHomeCache menghindari LookupId (libc/NSS) berulang tiap tick.
+// Diakses dari goroutine tea.Cmd yang bisa berjalan bersamaan → mutex.
+var (
+	userHomeCache   = map[string]string{}
+	userHomeCacheMu sync.Mutex
+)
+
+// lookupHomeForUid murni-di-inject: prioritas SUDO_USER saat uid 0
+// (sudo dev server cwd di home user, bukan /root).
+func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), byName func(string) (string, bool)) (string, bool) {
+	if uid == "0" && sudoUser != "" {
+		if h, ok := byName(sudoUser); ok {
+			return h, true
+		}
+	}
+	if uid != "" {
+		if h, ok := byID(uid); ok {
+			return h, true
+		}
+	}
+	if sudoUser != "" {
+		if h, ok := byName(sudoUser); ok {
+			return h, true
+		}
+	}
+	return "", false
+}
+
 // ownerHome mengembalikan home milik uid pemilik /proc/<pid>.
 // Jatuh kembali ke SUDO_USER lalu $HOME. Tidak memanggil proses eksternal.
 func ownerHome(pid int) string {
@@ -55,18 +84,48 @@ func ownerHome(pid int) string {
 			uid = strconv.FormatUint(uint64(st.Uid), 10)
 		}
 	}
+	sudoUser := os.Getenv("SUDO_USER")
+	cacheKey := "id:" + uid + ":" + sudoUser
 	if uid != "" {
-		if u, err := user.LookupId(uid); err == nil && u.HomeDir != "" {
-			return u.HomeDir
+		userHomeCacheMu.Lock()
+		h, ok := userHomeCache[cacheKey]
+		userHomeCacheMu.Unlock()
+		if ok {
+			return h
 		}
 	}
-	if su := os.Getenv("SUDO_USER"); su != "" {
-		if u, err := user.Lookup(su); err == nil && u.HomeDir != "" {
-			return u.HomeDir
+	byID := func(id string) (string, bool) {
+		u, err := user.LookupId(id)
+		if err != nil || u.HomeDir == "" {
+			return "", false
 		}
+		return u.HomeDir, true
+	}
+	byName := func(name string) (string, bool) {
+		u, err := user.Lookup(name)
+		if err != nil || u.HomeDir == "" {
+			return "", false
+		}
+		return u.HomeDir, true
+	}
+	if h, ok := lookupHomeForUid(uid, sudoUser, byID, byName); ok {
+		if uid != "" {
+			userHomeCacheMu.Lock()
+			userHomeCache[cacheKey] = h
+			userHomeCacheMu.Unlock()
+		}
+		return h
 	}
 	home, _ := os.UserHomeDir()
 	return home
+}
+
+// normalizeProjectName murni: "" / "." / "/" -> "-".
+func normalizeProjectName(s string) string {
+	if s == "" || s == "." || s == "/" {
+		return "-"
+	}
+	return s
 }
 
 func readCwd(pid int) (string, error) {
@@ -96,7 +155,5 @@ func enrichProject(item *PortItem) {
 		_, err := os.Stat(p)
 		return err == nil
 	}, ownerHome(pid))
-	if item.Project == "" || item.Project == "." || item.Project == "/" {
-		item.Project = "-"
-	}
+	item.Project = normalizeProjectName(item.Project)
 }

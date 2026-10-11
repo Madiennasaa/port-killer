@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type PortItem struct {
@@ -19,6 +20,8 @@ type PortItem struct {
 	Source  string
 	Cwd     string
 	Project string
+	Health  HealthStatus
+	Latency time.Duration
 }
 
 func (p PortItem) IsDocker() bool { return p.Source == "docker" }
