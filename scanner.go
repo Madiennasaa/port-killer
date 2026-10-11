@@ -22,6 +22,7 @@ type PortItem struct {
 	Project string
 	Health  HealthStatus
 	Latency time.Duration
+	Orphan  bool
 }
 
 func (p PortItem) IsDocker() bool { return p.Source == "docker" }
@@ -80,14 +81,16 @@ func GetActivePorts() []PortItem {
 	for i := range items {
 		if items[i].IsDocker() {
 			enrichProject(&items[i])
+			enrichOrphan(&items[i])
 			continue
 		}
 		if v, ok := cache[items[i].PID]; ok {
 			items[i].Cwd, items[i].Project = v[0], v[1]
-			continue
+		} else {
+			enrichProject(&items[i])
+			cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
 		}
-		enrichProject(&items[i])
-		cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
+		enrichOrphan(&items[i])
 	}
 	return items
 }

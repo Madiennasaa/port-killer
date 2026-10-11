@@ -102,3 +102,40 @@ func TestEnrichProjectDocker(t *testing.T) {
 		t.Fatalf("got %+v", it)
 	}
 }
+
+func TestParseStat(t *testing.T) {
+	// pid 123, comm "my (app) x", ppid 1, tty_nr 0
+	raw := "123 (my (app) x) S 1 123 123 0 -1 0 0 0 0 0 0 0 0 0 0 20 0 1 0 0 0 0"
+	ppid, tty, err := parseStat([]byte(raw))
+	if err != nil || ppid != 1 || tty != 0 {
+		t.Fatalf("got %d %d %v", ppid, tty, err)
+	}
+	if _, _, err := parseStat([]byte("no-parens here")); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestIsOrphan(t *testing.T) {
+	cases := []struct {
+		name       string
+		ppid       int
+		parentComm string
+		tty        int
+		proc       string
+		uid        int
+		want       bool
+	}{
+		{"ppid1", 1, "init", 0, "node", 1000, true},
+		{"subreaper", 2345, "systemd", 0, "node", 1000, true},
+		{"has-tty", 1, "init", 34816, "node", 1000, false},
+		{"system-name", 1, "init", 0, "sshd", 1000, false},
+		{"service-uid", 1, "init", 0, "daemon", 100, false},
+		{"root-nonsystem", 1, "init", 0, "node", 0, true},
+		{"normal", 5000, "bash", 34816, "node", 1000, false},
+	}
+	for _, c := range cases {
+		if got := isOrphan(c.ppid, c.parentComm, c.tty, c.proc, c.uid); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
+		}
+	}
+}

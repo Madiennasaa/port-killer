@@ -18,6 +18,7 @@ const (
 	modeNormal mode = iota
 	modeFilter
 	modeConfirm
+	modeConfirmOrphans
 )
 
 var sortNames = []string{"PORT", "PROCESS", "PID", "PROTO"}
@@ -36,6 +37,7 @@ var (
 	warnStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	orphanStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 )
 
 var systemProcs = map[string]bool{
@@ -50,6 +52,10 @@ type actionMsg struct {
 	item  PortItem
 	force bool
 	err   error
+}
+type orphansMsg struct {
+	done int
+	err  error
 }
 
 func refreshCmd() tea.Msg { return portsMsg(GetActivePorts()) }
@@ -84,6 +90,27 @@ func killCmd(item PortItem, force bool) tea.Cmd {
 	}
 }
 
+// killOrphansCmd: SIGTERM semua orphan host, lewati Docker.
+func killOrphansCmd(items []PortItem) tea.Cmd {
+	snap := make([]PortItem, len(items))
+	copy(snap, items)
+	return func() tea.Msg {
+		done := 0
+		var firstErr error
+		for _, it := range snap {
+			if it.IsDocker() {
+				continue
+			}
+			if err := KillProcess(it.PID, false); err == nil {
+				done++
+			} else if firstErr == nil {
+				firstErr = err
+			}
+		}
+		return orphansMsg{done: done, err: firstErr}
+	}
+}
+
 // ---------- Model ----------
 type model struct {
 	all     []PortItem
@@ -103,6 +130,8 @@ type model struct {
 	height  int
 	health  map[string]healthResult
 	hBusy   bool
+	orphans bool
+	otarget []PortItem
 }
 
 func initialModel() model {
@@ -134,6 +163,9 @@ func (m *model) rebuild() {
 	f := strings.ToLower(m.filter)
 	v := make([]PortItem, 0, len(m.all))
 	for _, it := range m.all {
+		if m.orphans && !it.Orphan {
+			continue
+		}
 		if m.proto == 0 && !strings.HasPrefix(it.Proto, "tcp") {
 			continue
 		}
@@ -204,6 +236,25 @@ func (m *model) askKill(force bool) {
 	m.mode = modeConfirm
 }
 
+func orphanItems(all []PortItem) []PortItem {
+	var out []PortItem
+	for _, it := range all {
+		if it.Orphan && !it.IsDocker() {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (m *model) askCleanOrphans() {
+	m.otarget = orphanItems(m.all)
+	if len(m.otarget) == 0 {
+		m.message, m.isErr = "Tidak ada orphan.", false
+		return
+	}
+	m.mode = modeConfirmOrphans
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -255,6 +306,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, refreshCmd
 
+	case orphansMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.message, m.isErr = fmt.Sprintf("Bersihkan orphan: %d OK, err: %v", msg.done, msg.err), true
+		} else {
+			m.message, m.isErr = fmt.Sprintf("Bersihkan orphan: %d proses (SIGTERM)", msg.done), false
+		}
+		return m, refreshCmd
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -265,6 +325,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch m.mode {
+	case modeConfirmOrphans:
+		m.mode = modeNormal
+		if key == "y" || key == "Y" {
+			m.busy = true
+			m.message, m.isErr = "Membersihkan orphan (SIGTERM)...", false
+			return m, killOrphansCmd(m.otarget)
+		}
+		m.message, m.isErr = "Dibatalkan.", false
+		return m, nil
+
 	case modeConfirm:
 		m.mode = modeNormal
 		if key == "y" || key == "Y" {
@@ -332,6 +402,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "K", "f8":
 		if !m.busy {
 			m.askKill(true)
+		}
+	case "o":
+		m.orphans = !m.orphans
+		m.rebuild()
+	case "X":
+		if !m.busy {
+			m.askCleanOrphans()
 		}
 	}
 	m.clamp()
@@ -405,11 +482,17 @@ func (m model) View() string {
 		if len(pid) > 8 {
 			pid = pid[:8]
 		}
-		line := fmt.Sprintf(" %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s",
-			it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), pad(healthText(it), 16), it.Process)
+		mark := " "
+		if it.Orphan {
+			mark = "⚠"
+		}
+		line := fmt.Sprintf(" %s%-6s %-16s %-7s %-8s %-12s %-18s %-16s %s",
+			mark, it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), pad(healthText(it), 16), it.Process)
 
 		st := normalStyle
 		switch {
+		case it.Orphan:
+			st = orphanStyle
 		case strings.HasPrefix(it.Process, "docker:"):
 			st = dockerStyle
 		case systemProcs[it.Process]:
@@ -431,6 +514,12 @@ func (m model) View() string {
 
 	// Baris status / konfirmasi / filter
 	switch {
+	case m.mode == modeConfirmOrphans:
+		names := make([]string, 0, len(m.otarget))
+		for _, it := range m.otarget {
+			names = append(names, it.Process+"(:"+it.Port+")")
+		}
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Bersihkan %d orphan (SIGTERM): %s? [y/N]", len(m.otarget), strings.Join(names, ", "))) + "\n")
 	case m.mode == modeConfirm:
 		verb := "Stop"
 		if m.force {
@@ -458,8 +547,13 @@ func (m model) View() string {
 	if os.Geteuid() != 0 {
 		root = " | bukan root"
 	}
-	info := fmt.Sprintf(" %d port | proto: %s | sort: %s | filter: %q | up: %s%s",
-		len(m.view), protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
+	nOrphan := len(orphanItems(m.all))
+	orphanFlag := ""
+	if m.orphans {
+		orphanFlag = " | orphan-only"
+	}
+	info := fmt.Sprintf(" %d port | orphan: %d%s | proto: %s | sort: %s | filter: %q | up: %s%s",
+		len(m.view), nOrphan, orphanFlag, protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
 	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
 
 	// Footer
@@ -470,6 +564,8 @@ func (m model) View() string {
 		footerItem("F6", "Urut "),
 		footerItem("F8", "Force "),
 		footerItem("F9", "Kill "),
+		footerItem("o", "Orphan "),
+		footerItem("X", "Bersih-orphan "),
 		footerItem("F10", "Keluar "),
 	}, ""))
 

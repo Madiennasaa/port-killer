@@ -132,6 +132,95 @@ func readCwd(pid int) (string, error) {
 	return os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
 }
 
+// parseStat murni: ambil ppid & tty_nr dari isi /proc/<pid>/stat.
+// Cari ")" terakhir agar aman untuk comm ber-spasi/kurung.
+func parseStat(data []byte) (ppid, ttyNr int, err error) {
+	s := string(data)
+	i := strings.LastIndex(s, ")")
+	if i == -1 {
+		return 0, 0, strconv.ErrSyntax
+	}
+	fields := strings.Fields(s[i+1:])
+	if len(fields) < 6 {
+		return 0, 0, strconv.ErrSyntax
+	}
+	// setelah comm: state(0) ppid(1) pgrp(2) session(3) tty_nr(4) ...
+	ppid, err = strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, 0, err
+	}
+	ttyNr, err = strconv.Atoi(strings.TrimSpace(fields[4]))
+	if err != nil {
+		return 0, 0, err
+	}
+	return ppid, ttyNr, nil
+}
+
+// isSystemProc: nama di systemProcs ATAU uid service 1..999.
+// uid 0 hanya sistem jika namanya ada di daftar; root non-sistem bisa orphan.
+func isSystemProc(name string, uid int) bool {
+	if systemProcs[name] {
+		return true
+	}
+	return uid >= 1 && uid <= 999
+}
+
+// isOrphan murni: (ppid==1 atau induk systemd/subreaker) + tanpa tty + bukan sistem.
+func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int) bool {
+	if ppid != 1 && parentComm != "systemd" {
+		return false
+	}
+	if ttyNr != 0 {
+		return false
+	}
+	return !isSystemProc(name, uid)
+}
+
+func procUid(pid int) (int, bool) {
+	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	if err != nil {
+		return 0, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return int(st.Uid), true
+}
+
+func parentCommOf(ppid int) string {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(ppid) + "/comm")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// enrichOrphan mengisi Orphan; Docker selalu false. Gagal baca /proc -> false.
+func enrichOrphan(item *PortItem) {
+	if item.IsDocker() {
+		item.Orphan = false
+		return
+	}
+	pid, err := strconv.Atoi(item.PID)
+	if err != nil {
+		item.Orphan = false
+		return
+	}
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		item.Orphan = false
+		return
+	}
+	ppid, ttyNr, err := parseStat(b)
+	if err != nil {
+		item.Orphan = false
+		return
+	}
+	uid, _ := procUid(pid)
+	item.Orphan = isOrphan(ppid, parentCommOf(ppid), ttyNr, item.Process, uid)
+}
+
 // enrichProject mengisi Cwd/Project; aman terhadap error /proc.
 // readCwd gagal permission (mis. proses root saat jalan tanpa sudo) -> "-".
 func enrichProject(item *PortItem) {
