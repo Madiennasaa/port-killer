@@ -58,9 +58,20 @@ type actionMsg struct {
 	force bool
 	err   error
 }
+type blastMsg struct {
+	pid   string
+	port  string
+	blast Blast
+}
 type orphansMsg struct {
 	done int
 	err  error
+}
+
+func blastCmd(it PortItem) tea.Cmd {
+	return func() tea.Msg {
+		return blastMsg{pid: it.PID, port: it.Port, blast: ComputeBlast(it)}
+	}
 }
 
 func refreshCmd() tea.Msg { return portsMsg(GetActivePorts()) }
@@ -137,6 +148,8 @@ type model struct {
 	hBusy   bool
 	orphans bool
 	otarget []PortItem
+	blast   Blast
+	bLoad   bool
 }
 
 func initialModel() model {
@@ -239,6 +252,8 @@ func (m *model) askKill(force bool) {
 	m.target = m.view[m.cursor]
 	m.force = force
 	m.mode = modeConfirm
+	m.bLoad = true
+	m.blast = Blast{}
 }
 
 func orphanItems(all []PortItem) []PortItem {
@@ -308,6 +323,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.applyHealth()
 		m.rebuild()
+		return m, nil
+
+	case blastMsg:
+		if m.mode == modeConfirm && msg.pid == m.target.PID && msg.port == m.target.Port {
+			m.blast, m.bLoad = msg.blast, false
+		}
 		return m, nil
 
 	case actionMsg:
@@ -412,10 +433,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "f9":
 		if !m.busy {
 			m.askKill(false)
+			if m.mode == modeConfirm {
+				return m, blastCmd(m.target)
+			}
 		}
 	case "K", "f8":
 		if !m.busy {
 			m.askKill(true)
+			if m.mode == modeConfirm {
+				return m, blastCmd(m.target)
+			}
 		}
 	case "o":
 		m.orphans = !m.orphans
@@ -569,7 +596,7 @@ func (m model) View() string {
 		if systemProcs[m.target.Process] {
 			warn = " [PROSES SISTEM!]"
 		}
-		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" %s %s (port %s, PID %s)?%s [y/N]", verb, m.target.Process, m.target.Port, m.target.PID, warn)) + "\n")
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" %s %s (:%s, PID %s)? %s.%s [y/N]", verb, m.target.Process, m.target.Port, m.target.PID, blastText(m.blast, m.bLoad), warn)) + "\n")
 	case m.mode == modeFilter:
 		b.WriteString(m.fullWidth(warnStyle, " Cari: "+m.filter+"█  (Enter: terapkan, Esc: batal)") + "\n")
 	case m.message != "":
