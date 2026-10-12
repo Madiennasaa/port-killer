@@ -50,6 +50,9 @@ var systemProcs = map[string]bool{
 
 // ---------- Messages ----------
 type tickMsg time.Time
+
+const messageTTL = 10 * time.Second
+
 type portsMsg []PortItem
 
 const msgHealthPanic = "Health check panic, dilewati siklus ini."
@@ -182,6 +185,7 @@ type model struct {
 
 	showDetail bool
 	showHelp   bool
+	msgAt      time.Time
 	ptarget    []PortItem
 	pname      string
 	detail     Detail
@@ -341,6 +345,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clamp()
 
 	case tickMsg:
+		if m.message != "" && !m.busy && !m.msgAt.IsZero() && time.Since(m.msgAt) > messageTTL {
+			m.message, m.isErr, m.msgAt = "", false, time.Time{}
+		}
 		return m, tea.Batch(refreshCmd, tickCmd())
 
 	case portsMsg:
@@ -390,6 +397,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case actionMsg:
 		m.busy = false
+		m.msgAt = time.Now()
 		if msg.err != nil {
 			m.message, m.isErr = fmt.Sprintf("Gagal %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err), true
 		} else {
@@ -399,6 +407,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case projectMsg:
 		m.busy = false
+		m.msgAt = time.Now()
 		if msg.err != nil {
 			m.message, m.isErr = fmt.Sprintf("Proyek %s: %d OK, err: %v", msg.project, msg.done, msg.err), true
 		} else {
@@ -408,6 +417,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case orphansMsg:
 		m.busy = false
+		m.msgAt = time.Now()
 		if msg.err != nil {
 			m.message, m.isErr = fmt.Sprintf("Bersihkan orphan: %d OK, err: %v", msg.done, msg.err), true
 		} else {
