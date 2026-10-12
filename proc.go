@@ -165,8 +165,15 @@ func isSystemProc(name string, uid int) bool {
 	return uid >= 1 && uid <= 999
 }
 
-// isOrphan murni: (ppid==1 atau induk systemd/subreaker) + tanpa tty + bukan sistem.
-func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int) bool {
+// isOrphan murni: (ppid==1 atau induk systemd) + tanpa tty + bukan sistem
+// + TCP + punya project (dev server yatim, bukan aplikasi GUI/daemon).
+func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int, proto, project string) bool {
+	if !strings.HasPrefix(proto, "tcp") {
+		return false
+	}
+	if project == "" || project == "-" {
+		return false
+	}
 	if ppid != 1 && parentComm != "systemd" {
 		return false
 	}
@@ -218,7 +225,7 @@ func enrichOrphan(item *PortItem) {
 		return
 	}
 	uid, _ := procUid(pid)
-	item.Orphan = isOrphan(ppid, parentCommOf(ppid), ttyNr, item.Process, uid)
+	item.Orphan = isOrphan(ppid, parentCommOf(ppid), ttyNr, item.Process, uid, item.Proto, item.Project)
 }
 
 // enrichProject mengisi Cwd/Project; aman terhadap error /proc.

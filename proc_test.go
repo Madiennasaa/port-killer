@@ -123,18 +123,23 @@ func TestIsOrphan(t *testing.T) {
 		tty        int
 		proc       string
 		uid        int
+		proto      string
+		project    string
 		want       bool
 	}{
-		{"ppid1", 1, "init", 0, "node", 1000, true},
-		{"subreaper", 2345, "systemd", 0, "node", 1000, true},
-		{"has-tty", 1, "init", 34816, "node", 1000, false},
-		{"system-name", 1, "init", 0, "sshd", 1000, false},
-		{"service-uid", 1, "init", 0, "daemon", 100, false},
-		{"root-nonsystem", 1, "init", 0, "node", 0, true},
-		{"normal", 5000, "bash", 34816, "node", 1000, false},
+		{"ppid1", 1, "init", 0, "node", 1000, "tcp", "app", true},
+		{"subreaper", 2345, "systemd", 0, "node", 1000, "tcp", "app", true},
+		{"has-tty", 1, "init", 34816, "node", 1000, "tcp", "app", false},
+		{"system-name", 1, "init", 0, "sshd", 1000, "tcp", "app", false},
+		{"service-uid", 1, "init", 0, "daemon", 100, "tcp", "app", false},
+		{"root-nonsystem", 1, "init", 0, "node", 0, "tcp", "app", true},
+		{"normal", 5000, "bash", 34816, "node", 1000, "tcp", "app", false},
+		{"udp-chromium", 1, "systemd", 0, "chromium", 1000, "udp", "ubai02", false},
+		{"tcp-no-project", 1, "init", 0, "node", 1000, "tcp", "-", false},
+		{"tcp-empty-project", 1, "init", 0, "node", 1000, "tcp", "", false},
 	}
 	for _, c := range cases {
-		if got := isOrphan(c.ppid, c.parentComm, c.tty, c.proc, c.uid); got != c.want {
+		if got := isOrphan(c.ppid, c.parentComm, c.tty, c.proc, c.uid, c.proto, c.project); got != c.want {
 			t.Errorf("%s: got %v want %v", c.name, got, c.want)
 		}
 	}

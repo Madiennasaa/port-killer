@@ -43,6 +43,8 @@ var (
 var systemProcs = map[string]bool{
 	"containerd": true, "systemd-resolve": true, "systemd": true,
 	"sshd": true, "dockerd": true, "NetworkManager": true, "cupsd": true,
+	"avahi-daemon": true, "chronyd": true, "dbus-daemon": true,
+	"bluetoothd": true, "wpa_supplicant": true,
 }
 
 // ---------- Messages ----------

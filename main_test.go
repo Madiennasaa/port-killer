@@ -26,7 +26,7 @@ func TestEnrichOrphanSelf(t *testing.T) {
 	if os.Getppid() == 1 {
 		t.Skip("induk PID 1 (setsid/CI/container): hasil orphan tidak terdefinisi untuk test ini")
 	}
-	it := PortItem{Proto: "tcp", Port: "1", PID: strconv.Itoa(os.Getpid()), Process: "portkiller.test", Source: "host"}
+	it := PortItem{Proto: "tcp", Port: "1", PID: strconv.Itoa(os.Getpid()), Process: "portkiller.test", Source: "host", Project: "app"}
 	enrichOrphan(&it)
 	if it.Orphan {
 		t.Fatal("proses test sendiri tidak boleh orphan (punya induk go test)")

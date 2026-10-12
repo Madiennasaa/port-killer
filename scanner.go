@@ -91,12 +91,12 @@ func GetActivePorts() []PortItem {
 			enrichProject(&items[i])
 			cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
 		}
-		if v, ok := orphanCache[items[i].PID]; ok {
+		if v, ok := orphanCache[items[i].PID+"|"+items[i].Proto]; ok {
 			items[i].Orphan = v
 			continue
 		}
 		enrichOrphan(&items[i])
-		orphanCache[items[i].PID] = items[i].Orphan
+		orphanCache[items[i].PID+"|"+items[i].Proto] = items[i].Orphan
 	}
 	return items
 }
