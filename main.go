@@ -161,27 +161,33 @@ func killOrphansCmd(items []PortItem) tea.Cmd {
 
 // ---------- Model ----------
 type model struct {
-	all     []PortItem
-	view    []PortItem
-	cursor  int
-	offset  int
-	filter  string
-	mode    mode
-	sortBy  int
-	proto   int
-	message string
-	isErr   bool
-	target  PortItem
-	force   bool
-	busy    bool
-	width   int
-	height  int
-	health  map[string]healthResult
-	hBusy   bool
-	orphans bool
-	otarget []PortItem
-	blast   Blast
-	bLoad   bool
+	lastMsg     string
+	seeded      bool
+	cause       string
+	causeAt     time.Time
+	showHistory bool
+	events      []Event
+	all         []PortItem
+	view        []PortItem
+	cursor      int
+	offset      int
+	filter      string
+	mode        mode
+	sortBy      int
+	proto       int
+	message     string
+	isErr       bool
+	target      PortItem
+	force       bool
+	busy        bool
+	width       int
+	height      int
+	health      map[string]healthResult
+	hBusy       bool
+	orphans     bool
+	otarget     []PortItem
+	blast       Blast
+	bLoad       bool
 
 	showDetail bool
 	showHelp   bool
@@ -339,6 +345,31 @@ func (m *model) askCleanOrphans() {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	nm, cmd := m.update(msg)
+	if mm, ok := nm.(model); ok && mm.message != mm.lastMsg {
+		mm.lastMsg = mm.message
+		if mm.message != "" {
+			mm.msgAt = time.Now()
+		}
+		nm = mm
+	}
+	return nm, cmd
+}
+
+func (m *model) markCause() { m.cause, m.causeAt = "dihentikan via portkiller", time.Now() }
+
+func (m *model) recordEvents(cur []PortItem) {
+	if m.seeded {
+		cause := "tidak diketahui"
+		if time.Since(m.causeAt) < 20*time.Second {
+			cause = m.cause
+		}
+		appendEvents(eventsPath(), diffPorts(m.all, cur, time.Now(), cause))
+	}
+	m.seeded = true
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -351,6 +382,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(refreshCmd, tickCmd())
 
 	case portsMsg:
+		m.recordEvents([]PortItem(msg))
 		m.all = []PortItem(msg)
 		// Buang hasil usang agar PID reuse tidak mewarisi status lama.
 		if m.health != nil {
@@ -434,6 +466,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
+	if m.showHistory {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		m.showHistory = false
+		return m, nil
+	}
+
 	if m.showHelp {
 		if key == "ctrl+c" {
 			return m, tea.Quit
@@ -448,6 +488,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if key == "y" || key == "Y" {
 			m.busy = true
 			m.message, m.isErr = "Menghentikan proyek "+m.pname+"...", false
+			m.markCause()
 			return m, killProjectCmd(m.pname, m.ptarget)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -458,6 +499,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if key == "y" || key == "Y" {
 			m.busy = true
 			m.message, m.isErr = "Membersihkan orphan (SIGTERM)...", false
+			m.markCause()
 			return m, killOrphansCmd(m.otarget)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -468,6 +510,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if key == "y" || key == "Y" {
 			m.busy = true
 			m.message, m.isErr = "Memproses...", false
+			m.markCause()
 			return m, killCmd(m.target, m.force)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -540,6 +583,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "i", "tab":
 		m.showDetail = !m.showDetail
+	case "h":
+		m.events = readEvents(eventsPath(), 200)
+		m.showHistory = true
 	case "?", "f1":
 		m.showHelp = true
 	case "o":
@@ -634,6 +680,20 @@ func healthText(it PortItem) string {
 }
 
 func (m model) View() string {
+	if m.showHistory {
+		var hb strings.Builder
+		hb.WriteString(m.fullWidth(headerStyle, " RIWAYAT PORT  (tombol apa saja untuk menutup)") + "\n")
+		if len(m.events) == 0 {
+			hb.WriteString(m.fullWidth(normalStyle, " Belum ada kejadian tercatat.") + "\n")
+		}
+		for i, e := range m.events {
+			if i >= m.height-3 {
+				break
+			}
+			hb.WriteString(m.fullWidth(normalStyle, " "+formatEvent(e)) + "\n")
+		}
+		return hb.String()
+	}
 	if m.showHelp {
 		return m.helpView()
 	}
@@ -760,6 +820,7 @@ func (m model) View() string {
 		footerItem("o", "Orphan "),
 		footerItem("X", "Bersih "),
 		footerItem("i", "Detail "),
+		footerItem("h", "Riwayat "),
 		footerItem("P", "Proyek "),
 		footerItem("?", "Bantuan "),
 		footerItem("F10", "Keluar "),
