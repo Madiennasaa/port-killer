@@ -464,6 +464,9 @@ func sysUptime() string {
 func healthText(it PortItem) string {
 	switch it.Health {
 	case HealthAlive:
+		if it.Latency < time.Millisecond {
+			return "● <1ms"
+		}
 		return "● " + it.Latency.Truncate(time.Millisecond).String()
 	case HealthDead:
 		return "○ tidak merespons"
@@ -531,7 +534,7 @@ func (m model) View() string {
 		for _, it := range m.otarget {
 			names = append(names, it.Process+"(:"+it.Port+")")
 		}
-		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Bersihkan %d orphan (SIGTERM): %s? [y/N]", len(m.otarget), strings.Join(names, ", "))) + "\n")
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Bersihkan %d orphan (SIGTERM, semua port): %s? [y/N]", len(m.otarget), strings.Join(names, ", "))) + "\n")
 	case m.mode == modeConfirm:
 		verb := "Stop"
 		if m.force {
@@ -560,9 +563,12 @@ func (m model) View() string {
 		root = " | bukan root"
 	}
 	nOrphan := len(orphanItems(m.all))
+	nOrphanView := len(orphanItems(m.view))
 	orphanFlag := ""
 	if m.orphans {
 		orphanFlag = " | orphan-only"
+	} else if nOrphan != nOrphanView {
+		orphanFlag = " | orphan tersembunyi filter"
 	}
 	info := fmt.Sprintf(" %d port | orphan: %d%s | proto: %s | sort: %s | filter: %q | up: %s%s",
 		len(m.view), nOrphan, orphanFlag, protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
