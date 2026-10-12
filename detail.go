@@ -124,6 +124,7 @@ func helpLines() []string {
 		" i atau Tab              Panel detail baris terpilih",
 		" o                       Filter orphan saja",
 		" X                       Bersihkan semua orphan (SIGTERM)",
+		" P                       Stop semua proses proyek baris terpilih",
 		" ? atau F1               Bantuan ini",
 		" F10 atau q              Keluar",
 		"",

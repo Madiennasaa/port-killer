@@ -19,6 +19,7 @@ const (
 	modeFilter
 	modeConfirm
 	modeConfirmOrphans
+	modeConfirmProject
 )
 
 var sortNames = []string{"PORT", "PROCESS", "PID", "PROTO"}
@@ -63,6 +64,11 @@ type blastMsg struct {
 	port  string
 	blast Blast
 }
+type projectMsg struct {
+	project string
+	done    int
+	err     error
+}
 type orphansMsg struct {
 	done int
 	err  error
@@ -71,6 +77,29 @@ type orphansMsg struct {
 func blastCmd(it PortItem) tea.Cmd {
 	return func() tea.Msg {
 		return blastMsg{pid: it.PID, port: it.Port, blast: ComputeBlast(it)}
+	}
+}
+
+func killProjectCmd(project string, targets []PortItem) tea.Cmd {
+	snap := make([]PortItem, len(targets))
+	copy(snap, targets)
+	return func() tea.Msg {
+		done := 0
+		var firstErr error
+		for _, it := range snap {
+			var err error
+			if it.IsDocker() {
+				err = StopContainer(it.PID)
+			} else {
+				err = KillProcess(it.PID, false)
+			}
+			if err == nil {
+				done++
+			} else if firstErr == nil {
+				firstErr = err
+			}
+		}
+		return projectMsg{project: project, done: done, err: firstErr}
 	}
 }
 
@@ -153,6 +182,8 @@ type model struct {
 
 	showDetail bool
 	showHelp   bool
+	ptarget    []PortItem
+	pname      string
 	detail     Detail
 }
 
@@ -273,6 +304,27 @@ func orphanItems(all []PortItem) []PortItem {
 	return out
 }
 
+func (m *model) askStopProject() {
+	if len(m.view) == 0 {
+		return
+	}
+	name := m.view[m.cursor].Project
+	for _, g := range groupByProject(m.all) {
+		if g.Project != name {
+			continue
+		}
+		t := projectTargets(g, procUid)
+		if len(t) == 0 {
+			m.message, m.isErr = "Proyek "+name+": tidak ada target aman.", false
+			return
+		}
+		m.ptarget, m.pname = t, name
+		m.mode = modeConfirmProject
+		return
+	}
+	m.message, m.isErr = "Baris ini tidak punya proyek.", false
+}
+
 func (m *model) askCleanOrphans() {
 	m.otarget = orphanItems(m.all)
 	if len(m.otarget) == 0 {
@@ -345,6 +397,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, refreshCmd
 
+	case projectMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.message, m.isErr = fmt.Sprintf("Proyek %s: %d OK, err: %v", msg.project, msg.done, msg.err), true
+		} else {
+			m.message, m.isErr = fmt.Sprintf("Proyek %s: %d dihentikan", msg.project, msg.done), false
+		}
+		return m, refreshCmd
+
 	case orphansMsg:
 		m.busy = false
 		if msg.err != nil {
@@ -372,6 +433,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.mode {
+	case modeConfirmProject:
+		m.mode = modeNormal
+		if key == "y" || key == "Y" {
+			m.busy = true
+			m.message, m.isErr = "Menghentikan proyek "+m.pname+"...", false
+			return m, killProjectCmd(m.pname, m.ptarget)
+		}
+		m.message, m.isErr = "Dibatalkan.", false
+		return m, nil
+
 	case modeConfirmOrphans:
 		m.mode = modeNormal
 		if key == "y" || key == "Y" {
@@ -464,6 +535,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "o":
 		m.orphans = !m.orphans
 		m.rebuild()
+	case "P":
+		if !m.busy {
+			m.askStopProject()
+		}
 	case "X":
 		if !m.busy {
 			m.askCleanOrphans()
@@ -616,6 +691,9 @@ func (m model) View() string {
 
 	// Baris status / konfirmasi / filter
 	switch {
+	case m.mode == modeConfirmProject:
+		h, d := projectSummary(m.ptarget)
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Stop proyek %s: %d proses, %d container (SIGTERM/docker stop): %s? [y/N]", m.pname, h, d, projectNames(m.ptarget, 3))) + "\n")
 	case m.mode == modeConfirmOrphans:
 		names := make([]string, 0, len(m.otarget))
 		for _, it := range m.otarget {
@@ -672,6 +750,7 @@ func (m model) View() string {
 		footerItem("o", "Orphan "),
 		footerItem("X", "Bersih "),
 		footerItem("i", "Detail "),
+		footerItem("P", "Proyek "),
 		footerItem("?", "Bantuan "),
 		footerItem("F10", "Keluar "),
 	}, "")))
