@@ -24,4 +24,4 @@ env/
 .DS_Store
 Thumbs.db
 .vscode/
-.idea/
+.idea/portkiller

@@ -441,8 +441,32 @@ func pad(s string, w int) string {
 	return s + strings.Repeat(" ", w-len(r))
 }
 
+func truncRunes(s string, w int) string {
+	r := []rune(s)
+	if w > 0 && len(r) > w {
+		return string(r[:w])
+	}
+	return s
+}
+
 func (m model) fullWidth(st lipgloss.Style, s string) string {
-	return st.Width(m.width).MaxWidth(m.width).Render(s)
+	s = truncRunes(strings.ReplaceAll(s, "\n", " "), m.width)
+	return st.Width(m.width).MaxWidth(m.width).Inline(true).Render(s)
+}
+
+// rowText menyusun satu baris tabel; kolom opsional disembunyikan saat terminal sempit.
+func (m model) rowText(mark, proto, addr, port, pid, uptime, project, health, proc string) string {
+	b := " " + mark + pad(proto, 6) + " " + pad(addr, 16) + " " + pad(port, 7) + " " + pad(pid, 8)
+	if m.width >= 100 {
+		b += " " + pad(uptime, 12)
+	}
+	if m.width >= 120 {
+		b += " " + pad(project, 18)
+	}
+	if m.width >= 90 {
+		b += " " + pad(health, 16)
+	}
+	return b + " " + proc
 }
 
 func footerItem(k, l string) string {
@@ -483,7 +507,7 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Header kolom (kolom pertama = marker orphan 1 rune + PROTO)
-	head := fmt.Sprintf("  %-6s %-16s %-7s %-8s %-12s %-18s %-16s %s", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
+	head := m.rowText(" ", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
 	// Baris
@@ -503,8 +527,7 @@ func (m model) View() string {
 		if it.Orphan {
 			mark = "⚠"
 		}
-		line := fmt.Sprintf(" %s%-6s %-16s %-7s %-8s %-12s %-18s %-16s %s",
-			mark, it.Proto, pad(it.Addr, 16), it.Port, pid, pad(it.Uptime, 12), pad(it.Project, 18), pad(healthText(it), 16), it.Process)
+		line := m.rowText(mark, it.Proto, it.Addr, it.Port, pid, it.Uptime, it.Project, healthText(it), it.Process)
 
 		st := normalStyle
 		switch {
