@@ -457,14 +457,14 @@ func (m model) fullWidth(st lipgloss.Style, s string) string {
 // rowText menyusun satu baris tabel; kolom opsional disembunyikan saat terminal sempit.
 func (m model) rowText(mark, proto, addr, port, pid, uptime, project, health, proc string) string {
 	b := " " + mark + pad(proto, 6) + " " + pad(addr, 16) + " " + pad(port, 7) + " " + pad(pid, 8)
+	if m.width >= 78 {
+		b += " " + pad(health, 16)
+	}
 	if m.width >= 100 {
 		b += " " + pad(uptime, 12)
 	}
 	if m.width >= 120 {
 		b += " " + pad(project, 18)
-	}
-	if m.width >= 90 {
-		b += " " + pad(health, 16)
 	}
 	return b + " " + proc
 }
