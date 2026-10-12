@@ -150,6 +150,10 @@ type model struct {
 	otarget []PortItem
 	blast   Blast
 	bLoad   bool
+
+	showDetail bool
+	showHelp   bool
+	detail     Detail
 }
 
 func initialModel() model {
@@ -219,7 +223,7 @@ func (m *model) rebuild() {
 }
 
 func (m model) rows() int {
-	r := m.height - 4 // header + status + info + footer
+	r := m.height - 4 - m.detailRows() // header + status + info + footer
 	if r < 1 {
 		r = 1
 	}
@@ -302,6 +306,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.applyHealth()
 		m.rebuild()
+		m.refreshDetail()
 		if !m.hBusy {
 			m.hBusy = true
 			return m, healthCmd(m.all)
@@ -357,6 +362,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+
+	if m.showHelp {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		m.showHelp = false
+		return m, nil
+	}
 
 	switch m.mode {
 	case modeConfirmOrphans:
@@ -444,6 +457,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, blastCmd(m.target)
 			}
 		}
+	case "i", "tab":
+		m.showDetail = !m.showDetail
+	case "?", "f1":
+		m.showHelp = true
 	case "o":
 		m.orphans = !m.orphans
 		m.rebuild()
@@ -453,6 +470,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.clamp()
+	m.refreshDetail()
 	return m, nil
 }
 
@@ -531,6 +549,9 @@ func healthText(it PortItem) string {
 }
 
 func (m model) View() string {
+	if m.showHelp {
+		return m.helpView()
+	}
 	var b strings.Builder
 
 	// Header kolom (kolom pertama = marker orphan 1 rune + PROTO)
@@ -577,6 +598,20 @@ func (m model) View() string {
 	}
 	for ; drawn < r; drawn++ {
 		b.WriteString("\n")
+	}
+
+	if m.showDetail {
+		var dl []string
+		if len(m.view) > 0 {
+			dl = detailLines(m.view[m.cursor], m.detail)
+		}
+		for i := 0; i < detailHeight; i++ {
+			l := ""
+			if i < len(dl) {
+				l = dl[i]
+			}
+			b.WriteString(m.fullWidth(detailStyle, l) + "\n")
+		}
 	}
 
 	// Baris status / konfirmasi / filter
@@ -627,7 +662,7 @@ func (m model) View() string {
 	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
 
 	// Footer
-	b.WriteString(strings.Join([]string{
+	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(strings.Join([]string{
 		footerItem("F3", "Cari "),
 		footerItem("F4", "Proto "),
 		footerItem("F5", "Refresh "),
@@ -636,8 +671,10 @@ func (m model) View() string {
 		footerItem("F9", "Kill "),
 		footerItem("o", "Orphan "),
 		footerItem("X", "Bersih "),
+		footerItem("i", "Detail "),
+		footerItem("?", "Bantuan "),
 		footerItem("F10", "Keluar "),
-	}, ""))
+	}, "")))
 
 	return b.String()
 }
