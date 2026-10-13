@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -459,6 +461,70 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+	}
+	return m, nil
+}
+
+// footerKeys: urutan sama dengan footer; lebar = len(key)+len(label).
+var footerKeys = []struct{ key, label, send string }{
+	{"F3", "Cari ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Urut ", "s"},
+	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"i", "Detail ", "i"}, {"h", "Riwayat ", "h"},
+	{"P", "Proyek ", "P"}, {"o", "Orphan ", "o"}, {"X", "Bersih ", "X"}, {"?", "Bantuan ", "?"},
+	{"F10", "Keluar ", "q"},
+}
+
+func keyFromString(s string) tea.KeyMsg {
+	if s == "enter" {
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.showHelp || m.showHistory || m.mode != modeNormal {
+		return m, nil
+	}
+	switch {
+	case msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress:
+		m.cursor--
+		m.clamp()
+		m.refreshDetail()
+		return m, nil
+	case msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress:
+		m.cursor++
+		m.clamp()
+		m.refreshDetail()
+		return m, nil
+	}
+	if msg.Action != tea.MouseActionPress || (msg.Button != tea.MouseButtonLeft && msg.Button != tea.MouseButtonRight) {
+		return m, nil
+	}
+	if msg.Y == m.height-1 {
+		x := 0
+		for _, f := range footerKeys {
+			w := len(f.key) + len(f.label)
+			if msg.X >= x && msg.X < x+w {
+				return m.handleKey(keyFromString(f.send))
+			}
+			x += w
+		}
+		return m, nil
+	}
+	row := msg.Y - 1
+	if row >= 0 && row < m.rows() {
+		idx := m.offset + row
+		if idx < len(m.view) {
+			again := idx == m.cursor
+			m.cursor = idx
+			m.clamp()
+			m.refreshDetail()
+			if again || msg.Button == tea.MouseButtonRight {
+				return m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+			}
+		}
 	}
 	return m, nil
 }
@@ -830,7 +896,14 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	if os.Geteuid() != 0 {
+		if exe, err := os.Executable(); err == nil {
+			if sudo, err := exec.LookPath("sudo"); err == nil {
+				syscall.Exec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
+			}
+		}
+	}
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Terjadi error: %v\n", err)
 		os.Exit(1)
