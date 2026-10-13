@@ -91,6 +91,7 @@ func appendEvents(path string, evs []Event) {
 		}
 	}
 	f.Close()
+	chownToSudoUser(filepath.Dir(path), path)
 	if b, err := os.ReadFile(path); err == nil && strings.Count(string(b), "\n") > maxEvents+200 {
 		os.WriteFile(path, []byte(trimLines(string(b), maxEvents)), 0o644)
 	}
