@@ -163,6 +163,7 @@ func killOrphansCmd(items []PortItem) tea.Cmd {
 
 // ---------- Model ----------
 type model struct {
+	restarts    []Restartable
 	lastMsg     string
 	seeded      bool
 	cause       string
@@ -429,6 +430,16 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case restartMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.message, m.isErr = fmt.Sprintf("Restart: %d OK, err: %v", msg.done, msg.err), true
+		} else {
+			m.message, m.isErr = fmt.Sprintf("Dijalankan ulang: %d proses", msg.done), false
+			m.restarts = nil
+		}
+		return m, refreshCmd
+
 	case actionMsg:
 		m.busy = false
 		m.msgAt = time.Now()
@@ -473,7 +484,7 @@ var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Cari ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Urut ", "s"},
 	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Bersih ", "X"},
 	{"i", "Detail ", "i"}, {"h", "Riwayat ", "h"}, {"P", "Proyek ", "P"}, {"?", "Bantuan ", "?"},
-	{"F10", "Keluar ", "q"},
+	{"R", "Restart ", "R"}, {"F10", "Keluar ", "q"},
 }
 
 func keyFromString(s string) tea.KeyMsg {
@@ -555,6 +566,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.busy = true
 			m.message, m.isErr = "Menghentikan proyek "+m.pname+"...", false
 			m.markCause()
+			m.restarts = captureAll(m.ptarget)
 			return m, killProjectCmd(m.pname, m.ptarget)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -566,6 +578,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.busy = true
 			m.message, m.isErr = "Membersihkan orphan (SIGTERM)...", false
 			m.markCause()
+			m.restarts = captureAll(m.otarget)
 			return m, killOrphansCmd(m.otarget)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -577,6 +590,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.busy = true
 			m.message, m.isErr = "Memproses...", false
 			m.markCause()
+			m.restarts = captureAll([]PortItem{m.target})
 			return m, killCmd(m.target, m.force)
 		}
 		m.message, m.isErr = "Dibatalkan.", false
@@ -654,6 +668,17 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHistory = true
 	case "?", "f1":
 		m.showHelp = true
+	case "R":
+		if m.busy {
+			break
+		}
+		if len(m.restarts) == 0 {
+			m.message, m.isErr = "Tidak ada proses terakhir untuk dijalankan ulang.", false
+		} else {
+			m.busy = true
+			m.message, m.isErr = "Menjalankan ulang: "+restartDesc(m.restarts[0])+"...", false
+			return m, restartCmd(m.restarts)
+		}
 	case "o":
 		m.orphans = !m.orphans
 		m.rebuild()

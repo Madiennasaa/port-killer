@@ -126,6 +126,7 @@ func helpLines() []string {
 		"o                       Filter orphan saja",
 		" X                       Bersihkan semua orphan (SIGTERM)",
 		" P                       Stop semua proses proyek baris terpilih",
+		" R                       Jalankan ulang proses yang terakhir dihentikan",
 		" ? atau F1               Bantuan ini",
 		" F10 atau q              Keluar",
 		"",
