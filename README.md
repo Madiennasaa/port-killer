@@ -22,6 +22,10 @@ P stop proyek, R restart, ? bantuan, F10 q keluar.
 
 ## Pasang
 
+    go install github.com/Madiennasaa/port-killer/cmd/portkiller@latest
+
+    atau dari source:
+
     make install
     portkiller
 
