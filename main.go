@@ -471,8 +471,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // footerKeys: urutan sama dengan footer; lebar = len(key)+len(label).
 var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Cari ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Urut ", "s"},
-	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"i", "Detail ", "i"}, {"h", "Riwayat ", "h"},
-	{"P", "Proyek ", "P"}, {"o", "Orphan ", "o"}, {"X", "Bersih ", "X"}, {"?", "Bantuan ", "?"},
+	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Bersih ", "X"},
+	{"i", "Detail ", "i"}, {"h", "Riwayat ", "h"}, {"P", "Proyek ", "P"}, {"?", "Bantuan ", "?"},
 	{"F10", "Keluar ", "q"},
 }
 
@@ -876,21 +876,11 @@ func (m model) View() string {
 	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
 
 	// Footer
-	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(strings.Join([]string{
-		footerItem("F3", "Cari "),
-		footerItem("F4", "Proto "),
-		footerItem("F5", "Refresh "),
-		footerItem("F6", "Urut "),
-		footerItem("F8", "Force "),
-		footerItem("F9", "Kill "),
-		footerItem("o", "Orphan "),
-		footerItem("X", "Bersih "),
-		footerItem("i", "Detail "),
-		footerItem("h", "Riwayat "),
-		footerItem("P", "Proyek "),
-		footerItem("?", "Bantuan "),
-		footerItem("F10", "Keluar "),
-	}, "")))
+	var fb strings.Builder
+	for _, f := range footerKeys {
+		fb.WriteString(footerItem(f.key, f.label))
+	}
+	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(fb.String()))
 
 	return b.String()
 }
