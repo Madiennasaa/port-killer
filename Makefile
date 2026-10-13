@@ -3,7 +3,7 @@ BIN=portkiller
 .PHONY: build test install clean
 
 build:
-	go build -o $(BIN) .
+	go build -o $(BIN) ./cmd/portkiller
 
 test:
 	go vet ./... && go test -race ./...

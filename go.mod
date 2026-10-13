@@ -1,4 +1,4 @@
-module portkiller
+module github.com/Madiennasaa/port-killer
 
 go 1.27.0
 
