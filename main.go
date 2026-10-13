@@ -163,6 +163,9 @@ func killOrphansCmd(items []PortItem) tea.Cmd {
 
 // ---------- Model ----------
 type model struct {
+	guard       []Rule
+	violations  []Violation
+	guardSeen   map[string]bool
 	restarts    []Restartable
 	lastMsg     string
 	seeded      bool
@@ -203,6 +206,9 @@ type model struct {
 func initialModel() model {
 	m := model{width: 80, height: 24, health: map[string]healthResult{}}
 	m.all = GetActivePorts()
+	m.guard = loadGuard()
+	m.guardSeen = map[string]bool{}
+	m.checkGuardNow()
 	m.applyHealth()
 	m.rebuild()
 	return m
@@ -359,6 +365,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return nm, cmd
 }
 
+func (m *model) checkGuardNow() {
+	if len(m.guard) == 0 {
+		m.violations = nil
+		return
+	}
+	if m.guardSeen == nil {
+		m.guardSeen = map[string]bool{}
+	}
+	m.violations = checkGuard(m.guard, m.all)
+	var evs []Event
+	cur := map[string]bool{}
+	for _, v := range m.violations {
+		k := guardKey(v)
+		cur[k] = true
+		if !m.guardSeen[k] {
+			evs = append(evs, Event{Time: time.Now(), Kind: "guard", Proto: v.Item.Proto, Port: v.Item.Port,
+				Process: v.Item.Process, PID: v.Item.PID, Cause: "milik " + v.Rule.Owner})
+		}
+	}
+	m.guardSeen = cur
+	appendEvents(eventsPath(), evs)
+}
+
 func (m *model) markCause() { m.cause, m.causeAt = "dihentikan via portkiller", time.Now() }
 
 func (m *model) recordEvents(cur []PortItem) {
@@ -367,7 +396,15 @@ func (m *model) recordEvents(cur []PortItem) {
 		if time.Since(m.causeAt) < 20*time.Second {
 			cause = m.cause
 		}
-		appendEvents(eventsPath(), diffPorts(m.all, cur, time.Now(), cause))
+		evs := diffPorts(m.all, cur, time.Now(), cause)
+		var keep []Event
+		for _, e := range evs {
+			if strings.HasPrefix(e.Proto, "udp") && e.Cause != "dihentikan via portkiller" {
+				continue
+			}
+			keep = append(keep, e)
+		}
+		appendEvents(eventsPath(), keep)
 	}
 	m.seeded = true
 }
@@ -387,6 +424,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case portsMsg:
 		m.recordEvents([]PortItem(msg))
 		m.all = []PortItem(msg)
+		m.checkGuardNow()
 		// Buang hasil usang agar PID reuse tidak mewarisi status lama.
 		if m.health != nil {
 			alive := make(map[string]healthResult, len(m.all))
@@ -880,7 +918,11 @@ func (m model) View() string {
 		}
 		b.WriteString(st.Render(" "+m.message) + "\n")
 	default:
-		b.WriteString("\n")
+		if len(m.violations) > 0 {
+			b.WriteString(m.fullWidth(warnStyle, violationText(m.violations)) + "\n")
+		} else {
+			b.WriteString("\n")
+		}
 	}
 
 	// Info bar
