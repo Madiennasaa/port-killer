@@ -21,7 +21,7 @@ type Event struct {
 
 func evKey(it PortItem) string { return it.Proto + "|" + it.Port + "|" + it.PID }
 
-// diffPorts murni: event muncul/hilang antara dua snapshot.
+// diffPorts (pure): appeared/vanished events between two snapshots.
 func diffPorts(prev, cur []PortItem, now time.Time, cause string) []Event {
 	p := map[string]PortItem{}
 	for _, it := range prev {
@@ -44,7 +44,7 @@ func diffPorts(prev, cur []PortItem, now time.Time, cause string) []Event {
 	return out
 }
 
-// formatEvent murni.
+// formatEvent (pure).
 func formatEvent(e Event) string {
 	s := e.Time.Format("15:04:05") + "  " + e.Kind + "  " + e.Proto + ":" + e.Port + "  " + e.Process
 	if e.Cause != "" {
@@ -53,7 +53,7 @@ func formatEvent(e Event) string {
 	return s
 }
 
-// trimLines murni: simpan max baris terakhir.
+// trimLines (pure): keep only the last max lines.
 func trimLines(s string, max int) string {
 	l := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	if len(l) > max {

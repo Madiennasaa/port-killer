@@ -34,7 +34,7 @@ func (m model) fullWidth(st lipgloss.Style, s string) string {
 	return st.Width(m.width).MaxWidth(m.width).Inline(true).Render(s)
 }
 
-// rowText menyusun satu baris tabel; kolom opsional disembunyikan saat terminal sempit.
+// rowText builds one table row; optional columns are hidden on narrow terminals.
 func (m model) rowText(mark, proto, addr, port, pid, uptime, project, health, proc string) string {
 	b := " " + mark + pad(proto, 6) + " " + pad(addr, 16) + " " + pad(port, 7) + " " + pad(pid, 8)
 	if m.width >= 78 {
@@ -103,7 +103,7 @@ func (m model) View() string {
 	}
 	var b strings.Builder
 
-	// Header kolom (kolom pertama = marker orphan 1 rune + PROTO)
+	// Column header (first column = 1-rune orphan marker + PROTO)
 	head := m.rowText(" ", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 

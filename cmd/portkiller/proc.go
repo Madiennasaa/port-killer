@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-// parseCmdline murni: split bytes cmdline dengan \x00.
+// parseCmdline (pure): splits cmdline bytes on \x00.
 func parseCmdline(b []byte) []string {
 	s := strings.TrimRight(string(b), "\x00")
 	if s == "" {
@@ -19,7 +19,7 @@ func parseCmdline(b []byte) []string {
 	return strings.Split(s, "\x00")
 }
 
-// findProjectRootFrom murni: walk-up cari marker, berhenti di home agar
+// findProjectRootFrom (pure): walks up looking for a marker, stopping at home so
 // ~/... without a marker is not labeled with the home name. home="" disables the bound.
 // Catatan: marker tepat di $HOME sengaja diabaikan (repo ~/.git, ~/.dotfiles
 // are not treated as a project root for cwds below them); cwd==$HOME -> fallback.
@@ -48,13 +48,13 @@ func findProjectRootFrom(path string, exists func(string) bool, home string) str
 }
 
 // userHomeCache menghindari LookupId (libc/NSS) berulang tiap tick.
-// Diakses dari goroutine tea.Cmd yang bisa berjalan bersamaan → mutex.
+// Accessed from tea.Cmd goroutines that may run concurrently, hence the mutex.
 var (
 	userHomeCache   = map[string]string{}
 	userHomeCacheMu sync.Mutex
 )
 
-// lookupHomeForUid murni-di-inject: prioritas SUDO_USER saat uid 0
+// lookupHomeForUid (pure, lookups injected): SUDO_USER takes priority when uid is 0
 // (sudo dev server cwd di home user, bukan /root).
 func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), byName func(string) (string, bool)) (string, bool) {
 	if uid == "0" && sudoUser != "" {
@@ -120,7 +120,7 @@ func ownerHome(pid int) string {
 	return home
 }
 
-// normalizeProjectName murni: "" / "." / "/" -> "-".
+// normalizeProjectName (pure): "" / "." / "/" -> "-".
 func normalizeProjectName(s string) string {
 	if s == "" || s == "." || s == "/" {
 		return "-"
@@ -132,7 +132,7 @@ func readCwd(pid int) (string, error) {
 	return os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
 }
 
-// parseStat murni: ambil ppid & tty_nr dari isi /proc/<pid>/stat.
+// parseStat (pure): extracts ppid and tty_nr from /proc/<pid>/stat.
 // Find the last ")" so comm values with spaces/parentheses are safe.
 func parseStat(data []byte) (ppid, ttyNr int, err error) {
 	s := string(data)
@@ -165,7 +165,7 @@ func isSystemProc(name string, uid int) bool {
 	return uid >= 1 && uid <= 999
 }
 
-// isOrphan murni: (ppid==1 atau induk systemd) + tanpa tty + bukan sistem
+// isOrphan (pure): (ppid==1 or parent is systemd) + no tty + not a system process
 // + TCP + punya project (dev server yatim, bukan aplikasi GUI/daemon).
 func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int, proto, project string) bool {
 	if !strings.HasPrefix(proto, "tcp") {

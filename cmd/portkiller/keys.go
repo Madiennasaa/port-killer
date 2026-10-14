@@ -4,7 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// footerKeys: urutan sama dengan footer; lebar = len(key)+len(label).
+// footerKeys: same order as the footer; width = len(key)+len(label).
 var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Search ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Sort ", "s"},
 	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Clean ", "X"},

@@ -27,12 +27,12 @@ type healthResultMsg struct {
 	panicked bool
 }
 
-// healthKey menyatukan hasil health dengan item hasil refresh.
+// healthKey ties health results to items from a refresh.
 func healthKey(proto, addr, port, pid string) string {
 	return proto + "-" + addr + "-" + port + "-" + pid
 }
 
-// dialTarget murni: wildcard -> 127.0.0.1:port.
+// dialTarget (pure): wildcard -> 127.0.0.1:port.
 func dialTarget(addr, port string) string {
 	a := strings.TrimSpace(addr)
 	if a == "" || a == "0.0.0.0" || a == "*" || a == "::" || a == "[::]" {

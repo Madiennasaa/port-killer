@@ -22,7 +22,7 @@ type Blast struct {
 	Clients  []string // nama proses klien
 }
 
-// parseProcNetTCP murni: parse isi /proc/net/tcp atau tcp6 (header dilewati).
+// parseProcNetTCP (pure): parses /proc/net/tcp or tcp6 contents (header skipped).
 func parseProcNetTCP(data []byte) []Conn {
 	var out []Conn
 	for i, line := range strings.Split(string(data), "\n") {
@@ -66,7 +66,7 @@ func countEstablished(conns []Conn, port int) []Conn {
 	return out
 }
 
-// countChildren murni: jumlah proses dengan ppid == pid dari peta pid->ppid.
+// countChildren (pure): number of processes with ppid == pid from a pid->ppid map.
 func countChildren(ppids map[int]int, pid int) int {
 	n := 0
 	for p, pp := range ppids {
@@ -77,7 +77,7 @@ func countChildren(ppids map[int]int, pid int) int {
 	return n
 }
 
-// readPPIDs membaca ppid semua proses dari /proc/<pid>/stat.
+// readPPIDs reads the ppid of every process from /proc/<pid>/stat.
 func readPPIDs() map[int]int {
 	out := map[int]int{}
 	ents, err := os.ReadDir("/proc")
@@ -134,7 +134,7 @@ func inodeOwners(inodes map[string]bool) map[string]string {
 	return out
 }
 
-// summarizeClients murni: nama klien unik terurut.
+// summarizeClients (pure): unique client names, sorted.
 func summarizeClients(names []string) []string {
 	seen := map[string]bool{}
 	var out []string

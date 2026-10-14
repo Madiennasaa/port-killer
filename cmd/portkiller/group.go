@@ -6,13 +6,13 @@ import (
 	"strings"
 )
 
-// Group satu proyek: item (baris port) dan target kill unik.
+// Group is one project: its items (port rows) and unique kill targets.
 type Group struct {
 	Project string
 	Items   []PortItem
 }
 
-// groupByProject murni: kelompokkan per Project, lewati "-" dan "".
+// groupByProject (pure): groups by Project, skipping "-" and "".
 // Urut nama proyek.
 func groupByProject(items []PortItem) []Group {
 	idx := map[string]int{}
@@ -33,8 +33,8 @@ func groupByProject(items []PortItem) []Group {
 	return gs
 }
 
-// projectTargets murni: target kill unik per PID/container.
-// Lewati systemProcs dan uid service (1..999). uidOf diinject agar testable.
+// projectTargets (pure): unique kill targets per PID/container.
+// Skips systemProcs and service uids (1..999). uidOf is injected for testability.
 func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 	seen := map[string]bool{}
 	var out []PortItem
@@ -58,7 +58,7 @@ func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 	return out
 }
 
-// projectSummary murni: ringkasan jumlah proses host dan container.
+// projectSummary (pure): counts of host processes and containers.
 func projectSummary(targets []PortItem) (host, docker int) {
 	for _, t := range targets {
 		if t.IsDocker() {

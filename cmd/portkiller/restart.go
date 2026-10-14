@@ -27,12 +27,12 @@ type restartMsg struct {
 	err  error
 }
 
-// restartable murni: cukup data untuk menjalankan ulang?
+// restartable (pure): is there enough data to relaunch?
 func restartable(cmd []string, cwd string) bool {
 	return len(cmd) > 0 && cmd[0] != "" && cwd != "" && cwd != "-" && !strings.HasSuffix(cwd, " (deleted)")
 }
 
-// restartDesc murni.
+// restartDesc (pure).
 func restartDesc(r Restartable) string {
 	if r.Docker {
 		return "docker start " + r.Name

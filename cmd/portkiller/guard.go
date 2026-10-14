@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// Rule: port diharapkan dipakai oleh peowned by tertentu (cocok dengan Process atau Project).
+// Rule: a port is expected to be used by a specific owner (matches Process or Project).
 type Rule struct {
 	Port  string
 	Owner string
 }
 
-// parseGuard murni: baris "5432=postgres-dev", "#" komentar, kosong dilewati.
+// parseGuard (pure): lines like "5432=postgres-dev"; "#" comments and blanks are skipped.
 func parseGuard(data string) []Rule {
 	var out []Rule
 	for _, l := range strings.Split(data, "\n") {
@@ -34,20 +34,20 @@ func parseGuard(data string) []Rule {
 	return out
 }
 
-// ownerMatches murni: owner cocok dengan nama proses (tanpa "docker:") atau project.
+// ownerMatches (pure): owner matches the process name (without "docker:") or project.
 func ownerMatches(it PortItem, owner string) bool {
 	name := strings.TrimPrefix(it.Process, "docker:")
 	o := strings.ToLower(owner)
 	return strings.ToLower(name) == o || strings.ToLower(it.Project) == o
 }
 
-// Violation: port direbut proses yang bukan pemilik.
+// Violation: a port taken by a process that is not its owner.
 type Violation struct {
 	Rule Rule
 	Item PortItem
 }
 
-// checkGuard murni: TCP/UDP yang listen di port aturan oleh bukan pemilik.
+// checkGuard (pure): TCP/UDP listeners on a rule's port that are not the owner.
 func checkGuard(rules []Rule, items []PortItem) []Violation {
 	var out []Violation
 	for _, r := range rules {

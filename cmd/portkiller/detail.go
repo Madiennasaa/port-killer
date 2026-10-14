@@ -23,7 +23,7 @@ type Detail struct {
 	Threads string
 }
 
-// parseStatus murni: isi /proc/<pid>/status -> map key:value.
+// parseStatus (pure): /proc/<pid>/status contents -> key:value map.
 func parseStatus(b []byte) map[string]string {
 	out := map[string]string{}
 	for _, l := range strings.Split(string(b), "\n") {
@@ -44,7 +44,7 @@ func firstField(s string) string {
 	return f[0]
 }
 
-// formatKB murni: "20480 kB" -> "20.0 MB".
+// formatKB (pure): "20480 kB" -> "20.0 MB".
 func formatKB(s string) string {
 	n, err := strconv.Atoi(firstField(s))
 	if err != nil {
@@ -101,7 +101,7 @@ func readDetail(it PortItem) Detail {
 	return d
 }
 
-// detailLines murni: selalu detailHeight baris.
+// detailLines (pure): always detailHeight lines.
 func detailLines(it PortItem, d Detail) []string {
 	return []string{
 		fmt.Sprintf(" DETAIL  %s  :%s  PID %s", it.Process, it.Port, it.PID),
