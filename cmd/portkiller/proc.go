@@ -76,7 +76,7 @@ func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), by
 }
 
 // ownerHome mengembalikan home owned by uid peowned by /proc/<pid>.
-// Jatuh kembali ke SUDO_USER lalu $HOME. Tidak memanggil proses eksternal.
+// Falls back to SUDO_USER, then $HOME. Does not spawn external processes.
 func ownerHome(pid int) string {
 	var uid string
 	if fi, err := os.Stat("/proc/" + strconv.Itoa(pid)); err == nil {
@@ -156,8 +156,8 @@ func parseStat(data []byte) (ppid, ttyNr int, err error) {
 	return ppid, ttyNr, nil
 }
 
-// isSystemProc: nama di systemProcs ATAU uid service 1..999.
-// uid 0 hanya sistem jika namanya ada di daftar; root non-sistem bisa orphan.
+// isSystemProc: name is in systemProcs OR uid is a service account (1..999).
+// uid 0 counts as system only if its name is listed; non-system root can be an orphan.
 func isSystemProc(name string, uid int) bool {
 	if systemProcs[name] {
 		return true
