@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Conn satu koneksi dari /proc/net/tcp(6).
+// Conn is one connection from /proc/net/tcp(6).
 type Conn struct {
 	LocalPort  int
 	RemotePort int
@@ -15,7 +15,7 @@ type Conn struct {
 	Inode      string
 }
 
-// Blast ringkasan dampak kill.
+// Blast summarizes the impact of a kill.
 type Blast struct {
 	Conns    int
 	Children int
@@ -55,7 +55,7 @@ func hexPort(addr string) int {
 	return int(n)
 }
 
-// countEstablished murni: koneksi ESTABLISHED dengan local port == port.
+// countEstablished (pure): ESTABLISHED connections whose local port == port.
 func countEstablished(conns []Conn, port int) []Conn {
 	var out []Conn
 	for _, c := range conns {
@@ -148,7 +148,7 @@ func summarizeClients(names []string) []string {
 	return out
 }
 
-// ComputeBlast menghitung dampak kill untuk item. Docker: tanpa hitungan /proc.
+// ComputeBlast computes the kill impact for an item. Docker: no /proc counting.
 func ComputeBlast(it PortItem) Blast {
 	var b Blast
 	port, err := strconv.Atoi(it.Port)
@@ -182,7 +182,7 @@ func ComputeBlast(it PortItem) Blast {
 	return b
 }
 
-// blastText murni: kalimat dampak untuk dialog.
+// blastText (pure): impact sentence for the dialog.
 func blastText(b Blast, loading bool) string {
 	if loading {
 		return "calculating impact..."

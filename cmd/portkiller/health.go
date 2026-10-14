@@ -55,7 +55,7 @@ func checkOne(addr, port string, timeout time.Duration) (HealthStatus, time.Dura
 	return HealthAlive, d
 }
 
-// CheckHealth paralel max 16, UDP -> NotApplicable. Dipanggil via tea.Cmd agar tidak memblokir UI.
+// CheckHealth runs up to 16 dials in parallel, UDP -> NotApplicable. Called via tea.Cmd so the UI never blocks.
 func CheckHealth(items []PortItem) map[string]healthResult {
 	out := make(map[string]healthResult)
 	type job struct {

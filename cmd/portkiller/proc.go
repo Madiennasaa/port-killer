@@ -20,9 +20,9 @@ func parseCmdline(b []byte) []string {
 }
 
 // findProjectRootFrom murni: walk-up cari marker, berhenti di home agar
-// ~/... tanpa marker tidak dilabeli nama home. home="" menonaktifkan batas.
+// ~/... without a marker is not labeled with the home name. home="" disables the bound.
 // Catatan: marker tepat di $HOME sengaja diabaikan (repo ~/.git, ~/.dotfiles
-// tidak dianggap root proyek untuk cwd di bawahnya); cwd==$HOME -> fallback.
+// are not treated as a project root for cwds below them); cwd==$HOME -> fallback.
 func findProjectRootFrom(path string, exists func(string) bool, home string) string {
 	markers := []string{".git", "go.mod", "composer.json", "package.json"}
 	dir := path
@@ -133,7 +133,7 @@ func readCwd(pid int) (string, error) {
 }
 
 // parseStat murni: ambil ppid & tty_nr dari isi /proc/<pid>/stat.
-// Cari ")" terakhir agar aman untuk comm ber-spasi/kurung.
+// Find the last ")" so comm values with spaces/parentheses are safe.
 func parseStat(data []byte) (ppid, ttyNr int, err error) {
 	s := string(data)
 	i := strings.LastIndex(s, ")")

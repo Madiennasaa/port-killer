@@ -314,7 +314,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recordEvents([]PortItem(msg))
 		m.all = []PortItem(msg)
 		m.checkGuardNow()
-		// Buang hasil usang agar PID reuse tidak mewarisi status lama.
+		// Drop stale results so PID reuse does not inherit an old status.
 		if m.health != nil {
 			alive := make(map[string]healthResult, len(m.all))
 			for _, it := range m.all {

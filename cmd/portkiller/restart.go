@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Restartable: data proses yang direkam sebelum dihentikan.
+// Restartable holds process data recorded before it is stopped.
 type Restartable struct {
 	Name   string
 	Cmd    []string

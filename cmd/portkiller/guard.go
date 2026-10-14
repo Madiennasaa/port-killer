@@ -60,7 +60,7 @@ func checkGuard(rules []Rule, items []PortItem) []Violation {
 	return out
 }
 
-// guardKey: dedup pelanggaran agar riwayat tidak dibanjiri tiap tick.
+// guardKey dedups violations so history is not flooded every tick.
 func guardKey(v Violation) string {
 	return v.Rule.Port + "|" + v.Item.PID + "|" + v.Item.Proto
 }
