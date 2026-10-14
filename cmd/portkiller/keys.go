@@ -8,7 +8,7 @@ import (
 var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Search ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Sort ", "s"},
 	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Clean ", "X"},
-	{"i", "Detail ", "i"}, {"h", "History ", "h"}, {"P", "Project ", "P"}, {"?", "Help ", "?"},
+	{"i", "Detail ", "i"}, {"h", "History ", "h"}, {"P", "StopProject ", "P"}, {"?", "Help ", "?"},
 	{"R", "Restart ", "R"}, {"F10", "Quit ", "q"},
 }
 

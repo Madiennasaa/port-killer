@@ -67,3 +67,10 @@ Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner
 ## License
 
 MIT
+
+## CLI mode
+
+    portkiller --list            # table output
+    portkiller --list --json     # machine-readable
+    portkiller --kill 8765       # SIGTERM / docker stop everything on that port
+    portkiller --kill 8765 --force

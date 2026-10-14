@@ -414,6 +414,9 @@ func main() {
 			}
 		}
 	}
+	if runCLI(os.Args[1:]) {
+		return
+	}
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
