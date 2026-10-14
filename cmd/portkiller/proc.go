@@ -55,7 +55,7 @@ var (
 )
 
 // lookupHomeForUid (pure, lookups injected): SUDO_USER takes priority when uid is 0
-// (sudo dev server cwd di home user, bukan /root).
+// (a sudo dev server has its cwd in the user's home, not /root).
 func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), byName func(string) (string, bool)) (string, bool) {
 	if uid == "0" && sudoUser != "" {
 		if h, ok := byName(sudoUser); ok {
@@ -166,7 +166,7 @@ func isSystemProc(name string, uid int) bool {
 }
 
 // isOrphan (pure): (ppid==1 or parent is systemd) + no tty + not a system process
-// + TCP + punya project (dev server yatim, bukan aplikasi GUI/daemon).
+// + TCP + belongs to a project (orphaned dev server, not a GUI app/daemon).
 func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int, proto, project string) bool {
 	if !strings.HasPrefix(proto, "tcp") {
 		return false
@@ -229,7 +229,7 @@ func enrichOrphan(item *PortItem) {
 }
 
 // enrichProject mengisi Cwd/Project; aman terhadap error /proc.
-// readCwd gagal permission (mis. proses root saat jalan tanpa sudo) -> "-".
+// If readCwd fails on permissions (e.g. a root process when run without sudo) -> "-".
 func enrichProject(item *PortItem) {
 	if item.IsDocker() {
 		item.Project = strings.TrimPrefix(item.Process, "docker:")

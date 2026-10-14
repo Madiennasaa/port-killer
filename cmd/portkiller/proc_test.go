@@ -77,7 +77,7 @@ func TestLookupHomeForUid(t *testing.T) {
 		}
 		return "", false
 	}
-	// uid 0 + SUDO_USER -> home sudo user, bukan /root
+	// uid 0 + SUDO_USER -> the sudo user's home, not /root
 	if h, _ := lookupHomeForUid("0", "ubai02", byID, byName); h != "/home/ubai02" {
 		t.Fatalf("root+sudo: got %q", h)
 	}
