@@ -6,10 +6,10 @@ import (
 
 // footerKeys: urutan sama dengan footer; lebar = len(key)+len(label).
 var footerKeys = []struct{ key, label, send string }{
-	{"F3", "Cari ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Urut ", "s"},
-	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Bersih ", "X"},
-	{"i", "Detail ", "i"}, {"h", "Riwayat ", "h"}, {"P", "Proyek ", "P"}, {"?", "Bantuan ", "?"},
-	{"R", "Restart ", "R"}, {"F10", "Keluar ", "q"},
+	{"F3", "Search ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Sort ", "s"},
+	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Clean ", "X"},
+	{"i", "Detail ", "i"}, {"h", "History ", "h"}, {"P", "Project ", "P"}, {"?", "Help ", "?"},
+	{"R", "Restart ", "R"}, {"F10", "Quit ", "q"},
 }
 
 func keyFromString(s string) tea.KeyMsg {
@@ -89,36 +89,36 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNormal
 		if key == "y" || key == "Y" {
 			m.busy = true
-			m.message, m.isErr = "Menghentikan proyek "+m.pname+"...", false
+			m.message, m.isErr = "Stopping project "+m.pname+"...", false
 			m.markCause()
 			m.restarts = captureAll(m.ptarget)
 			return m, killProjectCmd(m.pname, m.ptarget)
 		}
-		m.message, m.isErr = "Dibatalkan.", false
+		m.message, m.isErr = "Cancelled.", false
 		return m, nil
 
 	case modeConfirmOrphans:
 		m.mode = modeNormal
 		if key == "y" || key == "Y" {
 			m.busy = true
-			m.message, m.isErr = "Membersihkan orphan (SIGTERM)...", false
+			m.message, m.isErr = "Cleaning orphans (SIGTERM)...", false
 			m.markCause()
 			m.restarts = captureAll(m.otarget)
 			return m, killOrphansCmd(m.otarget)
 		}
-		m.message, m.isErr = "Dibatalkan.", false
+		m.message, m.isErr = "Cancelled.", false
 		return m, nil
 
 	case modeConfirm:
 		m.mode = modeNormal
 		if key == "y" || key == "Y" {
 			m.busy = true
-			m.message, m.isErr = "Memproses...", false
+			m.message, m.isErr = "Processing...", false
 			m.markCause()
 			m.restarts = captureAll([]PortItem{m.target})
 			return m, killCmd(m.target, m.force)
 		}
-		m.message, m.isErr = "Dibatalkan.", false
+		m.message, m.isErr = "Cancelled.", false
 		return m, nil
 
 	case modeFilter:
@@ -198,10 +198,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if len(m.restarts) == 0 {
-			m.message, m.isErr = "Tidak ada proses terakhir untuk dijalankan ulang.", false
+			m.message, m.isErr = "No recently stopped process to restart.", false
 		} else {
 			m.busy = true
-			m.message, m.isErr = "Menjalankan ulang: "+restartDesc(m.restarts[0])+"...", false
+			m.message, m.isErr = "Restarting: "+restartDesc(m.restarts[0])+"...", false
 			return m, restartCmd(m.restarts)
 		}
 	case "o":

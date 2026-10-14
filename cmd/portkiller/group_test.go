@@ -46,7 +46,7 @@ func TestProjectTargets(t *testing.T) {
 
 func TestProjectNames(t *testing.T) {
 	ts := []PortItem{{Process: "a", Port: "1"}, {Process: "b", Port: "2"}, {Process: "c", Port: "3"}}
-	if got := projectNames(ts, 2); got != "a(:1), b(:2) +1 lagi" {
+	if got := projectNames(ts, 2); got != "a(:1), b(:2) +1 more" {
 		t.Fatalf("got %q", got)
 	}
 }

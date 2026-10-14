@@ -12,7 +12,7 @@ const messageTTL = 10 * time.Second
 
 type portsMsg []PortItem
 
-const msgHealthPanic = "Health check panic, dilewati siklus ini."
+const msgHealthPanic = "Health check panicked, skipped this cycle."
 
 type actionMsg struct {
 	item  PortItem

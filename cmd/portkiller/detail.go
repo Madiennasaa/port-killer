@@ -107,37 +107,37 @@ func detailLines(it PortItem, d Detail) []string {
 		fmt.Sprintf(" DETAIL  %s  :%s  PID %s", it.Process, it.Port, it.PID),
 		" Cmd     : " + d.Cmdline,
 		" Cwd     : " + d.Cwd,
-		" User    : " + d.User + "   Induk: " + d.Parent,
-		" Memori  : " + d.Mem + "   Thread: " + d.Threads + "   Bind: " + it.Addr + "   Proyek: " + it.Project,
+		" User    : " + d.User + "   Parent: " + d.Parent,
+		" Memory  : " + d.Mem + "   Threads: " + d.Threads + "   Bind: " + it.Addr + "   Project: " + it.Project,
 	}
 }
 
 func helpLines() []string {
 	return []string{
-		" j/k ↑/↓ PgUp/PgDn g/G   Navigasi",
-		" F3 atau /               Cari (Esc hapus filter)",
-		" F4 atau t               Proto TCP / UDP / ALL",
-		" F5 atau r               Refresh manual (auto 2 detik)",
-		" F6 atau s               Urutan PORT / PROCESS / PID / PROTO",
-		" F9 atau Enter           Stop (SIGTERM / docker stop) + dampak",
-		" F8 atau K               Force kill (SIGKILL)",
-		" i atau Tab              Panel detail baris terpilih",
-		" h                       Riwayat port muncul/hilang + penyebab",
-		"o                       Filter orphan saja",
-		" X                       Bersihkan semua orphan (SIGTERM)",
-		" P                       Stop semua proses proyek baris terpilih",
-		" R                       Jalankan ulang proses yang terakhir dihentikan",
-		" ? atau F1               Bantuan ini",
-		" F10 atau q              Keluar",
+		" j/k Up/Down PgUp/PgDn g/G  Navigate",
+		" F3 or /                    Search (Esc clears filter)",
+		" F4 or t                    Protocol TCP / UDP / ALL",
+		" F5 or r                    Manual refresh (auto every 2s)",
+		" F6 or s                    Sort PORT / PROCESS / PID / PROTO",
+		" F9 or Enter                Stop (SIGTERM / docker stop) + impact",
+		" F8 or K                    Force kill (SIGKILL)",
+		" i or Tab                   Detail panel for selected row",
+		" h                          Port history (appeared/vanished + cause)",
+		" o                          Show orphans only",
+		" X                          Clean up all orphans (SIGTERM)",
+		" P                          Stop all processes of selected project",
+		" R                          Restart last stopped process",
+		" ? or F1                    This help",
+		" F10 or q                   Quit",
 		"",
-		" Marker  ⚠ orphan (TCP, tanpa tty, punya proyek)",
-		" Health  ● hidup   ○ tidak merespons   … belum dicek   - UDP",
+		" Marker  ⚠ orphan (TCP, no tty, belongs to a project)",
+		" Health  ● alive   ○ no response   … pending   - UDP",
 	}
 }
 
 func (m model) helpView() string {
 	var b strings.Builder
-	b.WriteString(m.fullWidth(headerStyle, " BANTUAN  (tombol apa saja untuk menutup)") + "\n")
+	b.WriteString(m.fullWidth(headerStyle, " HELP  (press any key to close)") + "\n")
 	for _, l := range helpLines() {
 		b.WriteString(m.fullWidth(normalStyle, l) + "\n")
 	}

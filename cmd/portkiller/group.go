@@ -76,7 +76,7 @@ func projectNames(targets []PortItem, max int) string {
 		n = append(n, t.Process+"(:"+t.Port+")")
 	}
 	if len(n) > max {
-		return strings.Join(n[:max], ", ") + " +" + strconv.Itoa(len(n)-max) + " lagi"
+		return strings.Join(n[:max], ", ") + " +" + strconv.Itoa(len(n)-max) + " more"
 	}
 	return strings.Join(n, ", ")
 }

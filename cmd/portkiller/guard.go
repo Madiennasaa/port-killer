@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Rule: port diharapkan dipakai oleh pemilik tertentu (cocok dengan Process atau Project).
+// Rule: port diharapkan dipakai oleh peowned by tertentu (cocok dengan Process atau Project).
 type Rule struct {
 	Port  string
 	Owner string
@@ -88,9 +88,9 @@ func violationText(vs []Violation) string {
 		return ""
 	}
 	v := vs[0]
-	s := " GUARD: :" + v.Rule.Port + " milik " + v.Rule.Owner + ", dipakai " + v.Item.Process + " (PID " + v.Item.PID + ")"
+	s := " GUARD: :" + v.Rule.Port + " owned by " + v.Rule.Owner + ", used by " + v.Item.Process + " (PID " + v.Item.PID + ")"
 	if len(vs) > 1 {
-		s += " +" + itoaSimple(len(vs)-1) + " lagi"
+		s += " +" + itoaSimple(len(vs)-1) + " more"
 	}
 	return s
 }

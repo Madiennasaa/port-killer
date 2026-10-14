@@ -75,7 +75,7 @@ func healthText(it PortItem) string {
 		}
 		return "● " + it.Latency.Truncate(time.Millisecond).String()
 	case HealthDead:
-		return "○ tidak merespons"
+		return "○ no response"
 	case HealthNotApplicable:
 		return "-"
 	default:
@@ -86,9 +86,9 @@ func healthText(it PortItem) string {
 func (m model) View() string {
 	if m.showHistory {
 		var hb strings.Builder
-		hb.WriteString(m.fullWidth(headerStyle, " RIWAYAT PORT  (tombol apa saja untuk menutup)") + "\n")
+		hb.WriteString(m.fullWidth(headerStyle, " PORT HISTORY  (press any key to close)") + "\n")
 		if len(m.events) == 0 {
-			hb.WriteString(m.fullWidth(normalStyle, " Belum ada kejadian tercatat.") + "\n")
+			hb.WriteString(m.fullWidth(normalStyle, " No events recorded yet.") + "\n")
 		}
 		for i, e := range m.events {
 			if i >= m.height-3 {
@@ -142,7 +142,7 @@ func (m model) View() string {
 		drawn++
 	}
 	if len(m.view) == 0 {
-		b.WriteString(" Tidak ada port yang cocok / butuh hak akses root.\n")
+		b.WriteString(" No matching ports / root access may be required.\n")
 		drawn++
 	}
 	for ; drawn < r; drawn++ {
@@ -167,13 +167,13 @@ func (m model) View() string {
 	switch {
 	case m.mode == modeConfirmProject:
 		h, d := projectSummary(m.ptarget)
-		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Stop proyek %s: %d proses, %d container (SIGTERM/docker stop): %s? [y/N]", m.pname, h, d, projectNames(m.ptarget, 3))) + "\n")
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Stop project %s: %d processes, %d containers (SIGTERM/docker stop): %s? [y/N]", m.pname, h, d, projectNames(m.ptarget, 3))) + "\n")
 	case m.mode == modeConfirmOrphans:
 		names := make([]string, 0, len(m.otarget))
 		for _, it := range m.otarget {
 			names = append(names, it.Process+"(:"+it.Port+")")
 		}
-		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Bersihkan %d orphan (SIGTERM, semua port): %s? [y/N]", len(m.otarget), strings.Join(names, ", "))) + "\n")
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Clean up %d orphans (SIGTERM, all ports): %s? [y/N]", len(m.otarget), strings.Join(names, ", "))) + "\n")
 	case m.mode == modeConfirm:
 		verb := "Stop"
 		if m.force {
@@ -181,11 +181,11 @@ func (m model) View() string {
 		}
 		warn := ""
 		if systemProcs[m.target.Process] {
-			warn = " [PROSES SISTEM!]"
+			warn = " [SYSTEM PROCESS!]"
 		}
 		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" %s %s (:%s, PID %s)? %s.%s [y/N]", verb, m.target.Process, m.target.Port, m.target.PID, blastText(m.blast, m.bLoad), warn)) + "\n")
 	case m.mode == modeFilter:
-		b.WriteString(m.fullWidth(warnStyle, " Cari: "+m.filter+"█  (Enter: terapkan, Esc: batal)") + "\n")
+		b.WriteString(m.fullWidth(warnStyle, " Search: "+m.filter+"█  (Enter: apply, Esc: cancel)") + "\n")
 	case m.message != "":
 		st := okStyle
 		if m.isErr {
@@ -203,7 +203,7 @@ func (m model) View() string {
 	// Info bar
 	root := ""
 	if os.Geteuid() != 0 {
-		root = " | bukan root"
+		root = " | not root"
 	}
 	nOrphan := len(orphanItems(m.all))
 	nOrphanView := len(orphanItems(m.view))
@@ -211,7 +211,7 @@ func (m model) View() string {
 	if m.orphans {
 		orphanFlag = " | orphan-only"
 	} else if nOrphan != nOrphanView {
-		orphanFlag = " | orphan tersembunyi filter"
+		orphanFlag = " | orphans hidden by filter"
 	}
 	info := fmt.Sprintf(" %d port | orphan: %d%s | proto: %s | sort: %s | filter: %q | up: %s%s",
 		len(m.view), nOrphan, orphanFlag, protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)

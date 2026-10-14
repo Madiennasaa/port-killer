@@ -33,12 +33,12 @@ func diffPorts(prev, cur []PortItem, now time.Time, cause string) []Event {
 		k := evKey(it)
 		c[k] = true
 		if _, ok := p[k]; !ok {
-			out = append(out, Event{Time: now, Kind: "muncul", Proto: it.Proto, Port: it.Port, Process: it.Process, PID: it.PID})
+			out = append(out, Event{Time: now, Kind: "appeared", Proto: it.Proto, Port: it.Port, Process: it.Process, PID: it.PID})
 		}
 	}
 	for _, it := range prev {
 		if !c[evKey(it)] {
-			out = append(out, Event{Time: now, Kind: "hilang", Proto: it.Proto, Port: it.Port, Process: it.Process, PID: it.PID, Cause: cause})
+			out = append(out, Event{Time: now, Kind: "vanished", Proto: it.Proto, Port: it.Port, Process: it.Process, PID: it.PID, Cause: cause})
 		}
 	}
 	return out

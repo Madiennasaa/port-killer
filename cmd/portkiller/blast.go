@@ -185,14 +185,14 @@ func ComputeBlast(it PortItem) Blast {
 // blastText murni: kalimat dampak untuk dialog.
 func blastText(b Blast, loading bool) string {
 	if loading {
-		return "menghitung dampak..."
+		return "calculating impact..."
 	}
 	if b.Conns == 0 && b.Children == 0 {
-		return "tanpa dampak terdeteksi"
+		return "no impact detected"
 	}
-	s := "memutus " + strconv.Itoa(b.Conns) + " koneksi"
+	s := "dropping " + strconv.Itoa(b.Conns) + " connections"
 	if len(b.Clients) > 0 {
 		s += " (" + strings.Join(b.Clients, ", ") + ")"
 	}
-	return s + ", " + strconv.Itoa(b.Children) + " proses anak"
+	return s + ", " + strconv.Itoa(b.Children) + " child processes"
 }

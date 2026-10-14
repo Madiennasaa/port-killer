@@ -223,20 +223,20 @@ func (m *model) askStopProject() {
 		}
 		t := projectTargets(g, procUid)
 		if len(t) == 0 {
-			m.message, m.isErr = "Proyek "+name+": tidak ada target aman.", false
+			m.message, m.isErr = "Project "+name+": no safe targets.", false
 			return
 		}
 		m.ptarget, m.pname = t, name
 		m.mode = modeConfirmProject
 		return
 	}
-	m.message, m.isErr = "Baris ini tidak punya proyek.", false
+	m.message, m.isErr = "This row has no project.", false
 }
 
 func (m *model) askCleanOrphans() {
 	m.otarget = orphanItems(m.all)
 	if len(m.otarget) == 0 {
-		m.message, m.isErr = "Tidak ada orphan.", false
+		m.message, m.isErr = "No orphans.", false
 		return
 	}
 	m.mode = modeConfirmOrphans
@@ -270,25 +270,25 @@ func (m *model) checkGuardNow() {
 		cur[k] = true
 		if !m.guardSeen[k] {
 			evs = append(evs, Event{Time: time.Now(), Kind: "guard", Proto: v.Item.Proto, Port: v.Item.Port,
-				Process: v.Item.Process, PID: v.Item.PID, Cause: "milik " + v.Rule.Owner})
+				Process: v.Item.Process, PID: v.Item.PID, Cause: "owned by " + v.Rule.Owner})
 		}
 	}
 	m.guardSeen = cur
 	appendEvents(eventsPath(), evs)
 }
 
-func (m *model) markCause() { m.cause, m.causeAt = "dihentikan via portkiller", time.Now() }
+func (m *model) markCause() { m.cause, m.causeAt = "stopped via portkiller", time.Now() }
 
 func (m *model) recordEvents(cur []PortItem) {
 	if m.seeded {
-		cause := "tidak diketahui"
+		cause := "unknown"
 		if time.Since(m.causeAt) < 20*time.Second {
 			cause = m.cause
 		}
 		evs := diffPorts(m.all, cur, time.Now(), cause)
 		var keep []Event
 		for _, e := range evs {
-			if strings.HasPrefix(e.Proto, "udp") && e.Cause != "dihentikan via portkiller" {
+			if strings.HasPrefix(e.Proto, "udp") && e.Cause != "stopped via portkiller" {
 				continue
 			}
 			keep = append(keep, e)
@@ -362,7 +362,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.message, m.isErr = fmt.Sprintf("Restart: %d OK, err: %v", msg.done, msg.err), true
 		} else {
-			m.message, m.isErr = fmt.Sprintf("Dijalankan ulang: %d proses", msg.done), false
+			m.message, m.isErr = fmt.Sprintf("Restarted: %d processes", msg.done), false
 			m.restarts = nil
 		}
 		return m, refreshCmd
@@ -371,9 +371,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.msgAt = time.Now()
 		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Gagal %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err), true
+			m.message, m.isErr = fmt.Sprintf("Failed %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err), true
 		} else {
-			m.message, m.isErr = fmt.Sprintf("Berhasil menghentikan %s (port %s)", msg.item.Process, msg.item.Port), false
+			m.message, m.isErr = fmt.Sprintf("Stopped %s (port %s)", msg.item.Process, msg.item.Port), false
 		}
 		return m, refreshCmd
 
@@ -381,9 +381,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.msgAt = time.Now()
 		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Proyek %s: %d OK, err: %v", msg.project, msg.done, msg.err), true
+			m.message, m.isErr = fmt.Sprintf("Project %s: %d OK, err: %v", msg.project, msg.done, msg.err), true
 		} else {
-			m.message, m.isErr = fmt.Sprintf("Proyek %s: %d dihentikan", msg.project, msg.done), false
+			m.message, m.isErr = fmt.Sprintf("Project %s: %d stopped", msg.project, msg.done), false
 		}
 		return m, refreshCmd
 
@@ -391,9 +391,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.msgAt = time.Now()
 		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Bersihkan orphan: %d OK, err: %v", msg.done, msg.err), true
+			m.message, m.isErr = fmt.Sprintf("Clean orphans: %d OK, err: %v", msg.done, msg.err), true
 		} else {
-			m.message, m.isErr = fmt.Sprintf("Bersihkan orphan: %d proses (SIGTERM)", msg.done), false
+			m.message, m.isErr = fmt.Sprintf("Cleaned orphans: %d processes (SIGTERM)", msg.done), false
 		}
 		return m, refreshCmd
 
@@ -416,7 +416,7 @@ func main() {
 	}
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Terjadi error: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 }

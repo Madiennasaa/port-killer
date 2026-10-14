@@ -57,14 +57,14 @@ func TestSummarizeClients(t *testing.T) {
 }
 
 func TestBlastText(t *testing.T) {
-	if blastText(Blast{}, true) != "menghitung dampak..." {
+	if blastText(Blast{}, true) != "calculating impact..." {
 		t.Fatal("loading")
 	}
-	if blastText(Blast{}, false) != "tanpa dampak terdeteksi" {
+	if blastText(Blast{}, false) != "no impact detected" {
 		t.Fatal("zero")
 	}
 	got := blastText(Blast{Conns: 3, Children: 2, Clients: []string{"php"}}, false)
-	if got != "memutus 3 koneksi (php), 2 proses anak" {
+	if got != "dropping 3 connections (php), 2 child processes" {
 		t.Fatalf("got %q", got)
 	}
 }

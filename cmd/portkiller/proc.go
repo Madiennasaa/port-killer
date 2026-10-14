@@ -75,7 +75,7 @@ func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), by
 	return "", false
 }
 
-// ownerHome mengembalikan home milik uid pemilik /proc/<pid>.
+// ownerHome mengembalikan home owned by uid peowned by /proc/<pid>.
 // Jatuh kembali ke SUDO_USER lalu $HOME. Tidak memanggil proses eksternal.
 func ownerHome(pid int) string {
 	var uid string

@@ -26,7 +26,7 @@ func TestCheckGuard(t *testing.T) {
 	ok := []PortItem{{Port: "5432", Process: "docker:postgres-dev"}}
 	bad := []PortItem{{Port: "5432", Process: "postgres", PID: "9"}, {Port: "80", Process: "nginx"}}
 	if len(checkGuard(rules, ok)) != 0 {
-		t.Fatal("pemilik sah")
+		t.Fatal("peowned by sah")
 	}
 	v := checkGuard(rules, bad)
 	if len(v) != 1 || v[0].Item.PID != "9" {
