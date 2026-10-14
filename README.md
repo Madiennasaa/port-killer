@@ -13,6 +13,7 @@ Data sources: `ss`, `/proc`, and `docker ps`.
 - **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause
+- **Conflict check** (`c`): ports declared in `docker-compose.yml` or `.env` of the current directory vs. running listeners
 - **Responsive layout + mouse support**
 
 ## Install

@@ -52,37 +52,38 @@ var systemProcs = map[string]bool{
 
 // ---------- Model ----------
 type model struct {
-	guard       []Rule
-	violations  []Violation
-	guardSeen   map[string]bool
-	restarts    []Restartable
-	lastMsg     string
-	seeded      bool
-	cause       string
-	causeAt     time.Time
-	showHistory bool
-	events      []Event
-	all         []PortItem
-	view        []PortItem
-	cursor      int
-	offset      int
-	filter      string
-	mode        mode
-	sortBy      int
-	proto       int
-	message     string
-	isErr       bool
-	target      PortItem
-	force       bool
-	busy        bool
-	width       int
-	height      int
-	health      map[string]healthResult
-	hBusy       bool
-	orphans     bool
-	otarget     []PortItem
-	blast       Blast
-	bLoad       bool
+	helpOverride []string
+	guard        []Rule
+	violations   []Violation
+	guardSeen    map[string]bool
+	restarts     []Restartable
+	lastMsg      string
+	seeded       bool
+	cause        string
+	causeAt      time.Time
+	showHistory  bool
+	events       []Event
+	all          []PortItem
+	view         []PortItem
+	cursor       int
+	offset       int
+	filter       string
+	mode         mode
+	sortBy       int
+	proto        int
+	message      string
+	isErr        bool
+	target       PortItem
+	force        bool
+	busy         bool
+	width        int
+	height       int
+	health       map[string]healthResult
+	hBusy        bool
+	orphans      bool
+	otarget      []PortItem
+	blast        Blast
+	bLoad        bool
 
 	showDetail bool
 	showHelp   bool

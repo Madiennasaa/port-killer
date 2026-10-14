@@ -2,6 +2,7 @@ package main
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"os"
 )
 
 // footerKeys: same order as the footer; width = len(key)+len(label).
@@ -9,7 +10,7 @@ var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Search ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Sort ", "s"},
 	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Clean ", "X"},
 	{"i", "Detail ", "i"}, {"h", "History ", "h"}, {"P", "StopProject ", "P"}, {"?", "Help ", "?"},
-	{"R", "Restart ", "R"}, {"F10", "Quit ", "q"},
+	{"R", "Restart ", "R"}, {"c", "Conflicts ", "c"}, {"F10", "Quit ", "q"},
 }
 
 func keyFromString(s string) tea.KeyMsg {
@@ -81,6 +82,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.showHelp = false
+		m.helpOverride = nil
 		return m, nil
 	}
 
@@ -191,6 +193,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "h":
 		m.events = readEvents(eventsPath(), 200)
 		m.showHistory = true
+	case "c":
+		wd, _ := os.Getwd()
+		m.helpOverride = append([]string{" Conflicts for " + wd, ""}, conflictLines(readNeeds(wd), m.all)...)
+		m.showHelp = true
 	case "?", "f1":
 		m.showHelp = true
 	case "R":

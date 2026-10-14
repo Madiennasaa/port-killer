@@ -122,6 +122,7 @@ func helpLines() []string {
 		" F9 or Enter                Stop (SIGTERM / docker stop) + impact",
 		" F8 or K                    Force kill (SIGKILL)",
 		" i or Tab                   Detail panel for selected row",
+		" c                          Check port conflicts (compose/.env in current dir)",
 		" h                          Port history (appeared/vanished + cause)",
 		" o                          Show orphans only",
 		" X                          Clean up all orphans (SIGTERM)",
@@ -138,7 +139,11 @@ func helpLines() []string {
 func (m model) helpView() string {
 	var b strings.Builder
 	b.WriteString(m.fullWidth(headerStyle, " HELP  (press any key to close)") + "\n")
-	for _, l := range helpLines() {
+	lines := helpLines()
+	if m.helpOverride != nil {
+		lines = m.helpOverride
+	}
+	for _, l := range lines {
 		b.WriteString(m.fullWidth(normalStyle, l) + "\n")
 	}
 	return b.String()
