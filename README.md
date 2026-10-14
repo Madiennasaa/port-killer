@@ -1,36 +1,69 @@
 # portkiller
 
-TUI manajer port untuk Linux (Go, Bubble Tea, Lip Gloss). Sumber data: ss, /proc, docker ps.
+A terminal UI port manager for Linux, built with Go, Bubble Tea, and Lip Gloss.
+Data sources: `ss`, `/proc`, and `docker ps`.
 
-## Fitur
+## Features
 
-- Docker-aware: container dihentikan dengan `docker stop`, bukan kill docker-proxy
-- Project-aware: kolom PROJECT dari cwd proses + penanda .git, go.mod, composer.json, package.json
-- Health check: dial TCP paralel per port
-- Orphan detector: TCP, tanpa tty, induk PID 1/systemd, punya proyek
-- Blast radius: dialog kill menampilkan koneksi, klien, proses anak
-- Detail panel, Stop proyek (P), Restart (R)
-- Port Guard: ~/.config/portkiller/guard.conf (port=pemilik)
-- Riwayat (h): port muncul/hilang + penyebab
-- Responsive + mouse
+- **Docker-aware**: containers are stopped with `docker stop`, not by killing `docker-proxy`
+- **Project-aware**: PROJECT column from the process cwd plus markers (`.git`, `go.mod`, `composer.json`, `package.json`)
+- **Health check**: parallel TCP dial per port
+- **Orphan detector**: TCP, no tty, parent PID 1/systemd, belongs to a project
+- **Blast radius**: the kill dialog shows connections, clients, and child processes
+- **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
+- **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
+- **History** (`h`): ports appearing/disappearing, with the cause
+- **Responsive layout + mouse support**
 
-## Keybind
-
-j/k panah PgUp/PgDn g/G navigasi, F3 / cari, F4 t proto, F5 r refresh, F6 s urut,
-F9 Enter stop, F8 K force, o orphan, X bersihkan orphan, i detail, h riwayat,
-P stop proyek, R restart, ? bantuan, F10 q keluar.
-
-## Pasang
+## Install
 
     go install github.com/Madiennasaa/port-killer/cmd/portkiller@latest
 
-    atau dari source:
+Or from source:
 
+    git clone https://github.com/Madiennasaa/port-killer.git
+    cd port-killer
     make install
-    portkiller
+
+Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
+
+## Keybindings
+
+| Key | Action |
+|---|---|
+| `j`/`k`, arrows, `PgUp`/`PgDn`, `g`/`G` | Navigate |
+| `F3` or `/` | Search (`Esc` clears) |
+| `F4` or `t` | Protocol: TCP / UDP / ALL |
+| `F5` or `r` | Refresh (auto every 2s) |
+| `F6` or `s` | Sort |
+| `F9` or `Enter` | Stop (SIGTERM / `docker stop`) with impact preview |
+| `F8` or `K` | Force kill (SIGKILL) |
+| `o` / `X` | Orphans only / clean up orphans |
+| `i` or `Tab` | Detail panel |
+| `h` | History |
+| `P` | Stop all processes of the project |
+| `R` | Restart last stopped |
+| `?` or `F1` | Help |
+| `F10` or `q` | Quit |
+
+Mouse: click a row to select, click again (or right-click) to stop, scroll to move, click footer keys.
 
 ## Port Guard
 
-File ~/.config/portkiller/guard.conf, satu aturan per baris:
+Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner is a process, container, or project name):
 
     5432=postgres-dev
+
+## Files
+
+- `~/.config/portkiller/guard.conf`: guard rules
+- `~/.local/state/portkiller/events.jsonl`: history log
+
+## Development
+
+    make test
+    make build
+
+## License
+
+MIT
