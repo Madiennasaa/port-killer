@@ -2,7 +2,6 @@ package main
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"os"
 )
 
 // footerKeys: same order as the footer; width = len(key)+len(label).
@@ -192,7 +191,7 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 		m.events = readEvents(eventsPath(), 200)
 		m.showHistory = true
 	case "c":
-		wd, _ := os.Getwd()
+		wd := conflictDir()
 		m.helpOverride = append([]string{" Conflicts for " + wd, ""}, conflictLines(readNeeds(wd), m.all)...)
 		m.showHelp = true
 	case "?", "f1":

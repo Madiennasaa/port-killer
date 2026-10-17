@@ -65,6 +65,17 @@ func parseEnvPorts(data string) []string {
 	return out
 }
 
+// conflictDir is the directory whose compose/.env files we check: the working
+// directory, or "" when it cannot be determined (the report then lists
+// nothing declared, which is honest).
+func conflictDir() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return wd
+}
+
 func readNeeds(dir string) []Need {
 	var out []Need
 	for _, f := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {

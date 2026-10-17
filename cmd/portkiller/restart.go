@@ -97,7 +97,10 @@ func restartOne(r Restartable) error {
 		if err != nil {
 			return err
 		}
-		gid, _ := strconv.Atoi(u.Gid)
+		gid, err := strconv.Atoi(u.Gid)
+		if err != nil {
+			return fmt.Errorf("user %s: bad gid %q: %w", u.Username, u.Gid, err)
+		}
 		c.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(r.UID), Gid: uint32(gid)}
 		c.Env = append(os.Environ(), "HOME="+u.HomeDir, "USER="+u.Username, "LOGNAME="+u.Username)
 	}

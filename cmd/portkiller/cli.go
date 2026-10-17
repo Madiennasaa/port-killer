@@ -88,7 +88,12 @@ func rejectUnknownFlag(args []string) bool {
 func cliList(asJSON bool) {
 	items := GetActivePorts()
 	if asJSON {
-		b, _ := json.MarshalIndent(items, "", "  ")
+		b, err := json.MarshalIndent(items, "", "  ")
+		if err != nil {
+			// PortItem is plain strings and ints: marshalling cannot fail.
+			fmt.Fprintln(os.Stderr, "encoding ports failed:", err)
+			os.Exit(1)
+		}
 		fmt.Println(string(b))
 		return
 	}
