@@ -349,6 +349,12 @@ func (m model) finishWork(okMsg, errMsg string, err error) (model, tea.Cmd) {
 	return m, refreshCmd
 }
 
+// messageExpired reports whether a status message has outlived its TTL and is
+// safe to clear: it must exist, the model must be idle, and msgAt must be set.
+func (m model) messageExpired() bool {
+	return m.message != "" && !m.busy && !m.msgAt.IsZero() && time.Since(m.msgAt) > messageTTL
+}
+
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -356,7 +362,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clamp()
 
 	case tickMsg:
-		if m.message != "" && !m.busy && !m.msgAt.IsZero() && time.Since(m.msgAt) > messageTTL {
+		if m.messageExpired() {
 			m.message, m.isErr, m.msgAt = "", false, time.Time{}
 		}
 		return m, tea.Batch(refreshCmd, tickCmd())

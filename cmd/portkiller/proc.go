@@ -75,22 +75,43 @@ func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), by
 	return "", false
 }
 
-// ownerHome mengembalikan home owned by uid peowned by /proc/<pid>.
+// procUID reads the owning uid of /proc/<pid>; ok is false when the process
+// is gone or /proc is unreadable.
+func procUID(pid int) (string, bool) {
+	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	if err != nil {
+		return "", false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", false
+	}
+	return strconv.FormatUint(uint64(st.Uid), 10), true
+}
+
+// cachedHome returns the cached home for key, if any.
+func cachedHome(key string) (string, bool) {
+	userHomeCacheMu.Lock()
+	defer userHomeCacheMu.Unlock()
+	h, ok := userHomeCache[key]
+	return h, ok
+}
+
+// storeHome remembers a resolved home for key.
+func storeHome(key, home string) {
+	userHomeCacheMu.Lock()
+	defer userHomeCacheMu.Unlock()
+	userHomeCache[key] = home
+}
+
+// ownerHome returns the home directory of the owner of /proc/<pid>.
 // Falls back to SUDO_USER, then $HOME. Does not spawn external processes.
 func ownerHome(pid int) string {
-	var uid string
-	if fi, err := os.Stat("/proc/" + strconv.Itoa(pid)); err == nil {
-		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-			uid = strconv.FormatUint(uint64(st.Uid), 10)
-		}
-	}
+	uid, _ := procUID(pid)
 	sudoUser := os.Getenv("SUDO_USER")
 	cacheKey := "id:" + uid + ":" + sudoUser
 	if uid != "" {
-		userHomeCacheMu.Lock()
-		h, ok := userHomeCache[cacheKey]
-		userHomeCacheMu.Unlock()
-		if ok {
+		if h, ok := cachedHome(cacheKey); ok {
 			return h
 		}
 	}
@@ -110,9 +131,7 @@ func ownerHome(pid int) string {
 	}
 	if h, ok := lookupHomeForUid(uid, sudoUser, byID, byName); ok {
 		if uid != "" {
-			userHomeCacheMu.Lock()
-			userHomeCache[cacheKey] = h
-			userHomeCacheMu.Unlock()
+			storeHome(cacheKey, h)
 		}
 		return h
 	}
