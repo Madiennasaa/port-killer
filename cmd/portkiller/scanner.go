@@ -34,49 +34,64 @@ func GetActivePorts() []PortItem {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err == nil {
-		seen := make(map[string]bool)
-		for _, line := range strings.Split(out.String(), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 7 {
-				continue
-			}
-			state := fields[1]
-			if state != "LISTEN" && state != "UNCONN" {
-				continue
-			}
-
-			proto := fields[0]
-			localAddr := fields[4]
-			i := strings.LastIndex(localAddr, ":")
-			if i == -1 {
-				continue
-			}
-			addr, port := localAddr[:i], localAddr[i+1:]
-
-			pid, procName := parseProcessInfo(fields[len(fields)-1])
-			if pid == "" || procName == "docker-proxy" {
-				continue
-			}
-
-			key := proto + "-" + port + "-" + pid
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-
-			items = append(items, PortItem{
-				Proto:   proto,
-				Addr:    addr,
-				Port:    port,
-				Process: procName,
-				PID:     pid,
-				Source:  "host",
-			})
-		}
+		items = append(items, parseSS(out.String())...)
 	}
 
 	items = append(items, GetDockerPorts()...)
 	fillUptime(items)
+	enrichAll(items)
+	return items
+}
+
+// parseSS turns `ss -tulnp` output into host listeners.
+// Header/short/state-filtered lines and docker-proxy listeners are dropped,
+// and a pid+port seen twice is kept only once.
+func parseSS(out string) []PortItem {
+	var items []PortItem
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			continue
+		}
+		state := fields[1]
+		if state != "LISTEN" && state != "UNCONN" {
+			continue
+		}
+
+		proto := fields[0]
+		localAddr := fields[4]
+		i := strings.LastIndex(localAddr, ":")
+		if i == -1 {
+			continue
+		}
+		addr, port := localAddr[:i], localAddr[i+1:]
+
+		pid, procName := parseProcessInfo(fields[len(fields)-1])
+		if pid == "" || procName == "docker-proxy" {
+			continue
+		}
+
+		key := proto + "-" + port + "-" + pid
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		items = append(items, PortItem{
+			Proto:   proto,
+			Addr:    addr,
+			Port:    port,
+			Process: procName,
+			PID:     pid,
+			Source:  "host",
+		})
+	}
+	return items
+}
+
+// enrichAll fills project/cwd and the orphan flag, caching per pid.
+func enrichAll(items []PortItem) {
 	cache := make(map[string][2]string) // pid -> {cwd, project}
 	orphanCache := map[string]bool{}
 	for i := range items {
@@ -98,7 +113,6 @@ func GetActivePorts() []PortItem {
 		enrichOrphan(&items[i])
 		orphanCache[items[i].PID+"|"+items[i].Proto] = items[i].Orphan
 	}
-	return items
 }
 
 func fillUptime(items []PortItem) {
@@ -131,11 +145,16 @@ func GetDockerPorts() []PortItem {
 	if err != nil {
 		return nil
 	}
+	return parseDockerPS(string(out))
+}
 
+// parseDockerPS turns `docker ps --format` output into published-port items.
+// Lines without "->" (no publish) and malformed lines are skipped.
+func parseDockerPS(out string) []PortItem {
 	var items []PortItem
 	seen := make(map[string]bool)
 
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		parts := strings.SplitN(line, "|", 4)
 		if len(parts) < 4 {
 			continue

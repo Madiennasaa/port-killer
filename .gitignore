@@ -25,5 +25,13 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+
+# Build output
 /portkiller
 /coverage.out
+
+# repowise: local index/cache and editor wiring (machine-specific paths)
+.repowise/
+.mcp.json
+.claude/
+.github/copilot-instructions.md

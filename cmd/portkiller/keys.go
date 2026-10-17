@@ -69,83 +69,81 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	if m.showHistory {
-		if key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		m.showHistory = false
-		return m, nil
-	}
-
-	if m.showHelp {
-		if key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		m.showHelp = false
-		m.helpOverride = nil
-		return m, nil
+	if m.showHistory || m.showHelp {
+		return m.closeOverlay(key)
 	}
 
 	switch m.mode {
-	case modeConfirmProject:
-		m.mode = modeNormal
-		if key == "y" || key == "Y" {
-			m.busy = true
-			m.message, m.isErr = "Stopping project "+m.pname+"...", false
-			m.markCause()
-			m.restarts = captureAll(m.ptarget)
-			return m, killProjectCmd(m.pname, m.ptarget)
-		}
-		m.message, m.isErr = "Cancelled.", false
-		return m, nil
-
-	case modeConfirmOrphans:
-		m.mode = modeNormal
-		if key == "y" || key == "Y" {
-			m.busy = true
-			m.message, m.isErr = "Cleaning orphans (SIGTERM)...", false
-			m.markCause()
-			m.restarts = captureAll(m.otarget)
-			return m, killOrphansCmd(m.otarget)
-		}
-		m.message, m.isErr = "Cancelled.", false
-		return m, nil
-
-	case modeConfirm:
-		m.mode = modeNormal
-		if key == "y" || key == "Y" {
-			m.busy = true
-			m.message, m.isErr = "Processing...", false
-			m.markCause()
-			m.restarts = captureAll([]PortItem{m.target})
-			return m, killCmd(m.target, m.force)
-		}
-		m.message, m.isErr = "Cancelled.", false
-		return m, nil
-
+	case modeConfirmProject, modeConfirmOrphans, modeConfirm:
+		return m.confirmKey(key)
 	case modeFilter:
-		switch key {
-		case "enter":
-			m.mode = modeNormal
-		case "esc":
-			m.mode = modeNormal
-			m.filter = ""
-		case "backspace":
-			r := []rune(m.filter)
-			if len(r) > 0 {
-				m.filter = string(r[:len(r)-1])
-			}
-		case "ctrl+c":
-			return m, tea.Quit
-		default:
-			if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
-				m.filter += string(msg.Runes)
-			}
-		}
-		m.rebuild()
+		return m.filterKey(msg, key)
+	}
+	return m.normalKey(key)
+}
+
+// closeOverlay dismisses the history/help overlay on any key but ctrl+c.
+func (m model) closeOverlay(key string) (tea.Model, tea.Cmd) {
+	if key == "ctrl+c" {
+		return m, tea.Quit
+	}
+	m.showHistory = false
+	m.showHelp = false
+	m.helpOverride = nil
+	return m, nil
+}
+
+// confirmKey answers one of the pending confirmation dialogs.
+func (m model) confirmKey(key string) (tea.Model, tea.Cmd) {
+	mode := m.mode
+	m.mode = modeNormal
+	if key != "y" && key != "Y" {
+		m.message, m.isErr = "Cancelled.", false
 		return m, nil
 	}
+	m.busy = true
+	m.markCause()
+	switch mode {
+	case modeConfirmProject:
+		m.message, m.isErr = "Stopping project "+m.pname+"...", false
+		m.restarts = captureAll(m.ptarget)
+		return m, killProjectCmd(m.pname, m.ptarget)
+	case modeConfirmOrphans:
+		m.message, m.isErr = "Cleaning orphans (SIGTERM)...", false
+		m.restarts = captureAll(m.otarget)
+		return m, killOrphansCmd(m.otarget)
+	default:
+		m.message, m.isErr = "Processing...", false
+		m.restarts = captureAll([]PortItem{m.target})
+		return m, killCmd(m.target, m.force)
+	}
+}
 
+// filterKey edits the search filter while modeFilter is active.
+func (m model) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "enter", "esc":
+		m.mode = modeNormal
+		if key == "esc" {
+			m.filter = ""
+		}
+	case "backspace":
+		if r := []rune(m.filter); len(r) > 0 {
+			m.filter = string(r[:len(r)-1])
+		}
+	case "ctrl+c":
+		return m, tea.Quit
+	default:
+		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+			m.filter += string(msg.Runes)
+		}
+	}
+	m.rebuild()
+	return m, nil
+}
+
+// normalKey handles the main keymap once no overlay or dialog is up.
+func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "ctrl+c", "q", "f10":
 		return m, tea.Quit

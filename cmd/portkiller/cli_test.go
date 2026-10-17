@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
 
 func TestCLINeedsRoot(t *testing.T) {
 	cases := []struct {
@@ -55,4 +61,62 @@ func TestVersionStampedOrDev(t *testing.T) {
 	if version == "" {
 		t.Fatal("version must not be empty")
 	}
+}
+
+func TestRunCLIListAndJSON(t *testing.T) {
+	if !runCLI([]string{"--list"}) {
+		t.Fatal("--list should be handled")
+	}
+	if !runCLI([]string{"--list", "--json"}) {
+		t.Fatal("--list --json should be handled")
+	}
+}
+
+// TestRunCLIExitCodes re-execs the test binary so the os.Exit paths in runCLI
+// can be observed without killing the test run itself.
+func TestRunCLIExitCodes(t *testing.T) {
+	cases := []struct {
+		args []string
+		want int
+	}{
+		{[]string{"--bogus"}, 2},
+		{[]string{"--kill"}, 2},
+		{[]string{"--kill", "notaport"}, 1}, // parses fine, nothing listens
+		{[]string{"--kill", "1"}, 1},        // nothing listens on port 1
+	}
+	for _, c := range cases {
+		cmd := exec.Command(os.Args[0], "-test.run=TestRunCLIHelperProcess", "--")
+		cmd.Env = append(os.Environ(), "PORTKILLER_CLI_HELPER=1",
+			"PORTKILLER_CLI_ARGS="+strings.Join(c.args, " "))
+		err := cmd.Run()
+		exit, ok := exitCode(err)
+		if !ok {
+			t.Fatalf("args %v: helper did not exit: %v", c.args, err)
+		}
+		if exit != c.want {
+			t.Errorf("args %v: exit = %d, want %d", c.args, exit, c.want)
+		}
+	}
+}
+
+// TestRunCLIHelperProcess is not a real test: it is the subprocess entry point
+// for TestRunCLIExitCodes.
+func TestRunCLIHelperProcess(t *testing.T) {
+	if os.Getenv("PORTKILLER_CLI_HELPER") != "1" {
+		t.Skip("helper process only")
+	}
+	args := strings.Fields(os.Getenv("PORTKILLER_CLI_ARGS"))
+	runCLI(args)
+	os.Exit(0)
+}
+
+func exitCode(err error) (int, bool) {
+	if err == nil {
+		return 0, true
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode(), true
+	}
+	return 0, false
 }
