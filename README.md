@@ -42,10 +42,11 @@ Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
 | `o` / `X` | Orphans only / clean up orphans |
 | `i` or `Tab` | Detail panel |
 | `h` | History |
+| `c` | Conflict check vs `docker-compose.yml` / `.env` |
 | `P` | Stop all processes of the project |
 | `R` | Restart last stopped |
 | `?` or `F1` | Help |
-| `F10` or `q` | Quit |
+| `F10`, `q` or `Ctrl+C` | Quit |
 
 Mouse: click a row to select, click again (or right-click) to stop, scroll to move, click footer keys.
 
@@ -62,8 +63,9 @@ Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner
 
 ## Development
 
-    make test
-    make build
+    make test    # go vet + go test -race
+    make cover   # coverage summary
+    make build   # stamps the version from `git describe`
 
 ## License
 
@@ -71,7 +73,12 @@ MIT
 
 ## CLI mode
 
+    portkiller --help            # usage
+    portkiller --version         # version stamp
     portkiller --list            # table output
     portkiller --list --json     # machine-readable
     portkiller --kill 8765       # SIGTERM / docker stop everything on that port
     portkiller --kill 8765 --force
+
+Unknown flags exit with status 2 instead of silently starting the TUI.
+`--help` and `--version` run without a sudo prompt.

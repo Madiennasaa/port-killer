@@ -408,6 +408,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func main() {
+	// Help and version must work without a sudo prompt.
+	if !cliNeedsRoot(os.Args[1:]) && runCLI(os.Args[1:]) {
+		return
+	}
 	if os.Geteuid() != 0 {
 		if exe, err := os.Executable(); err == nil {
 			if sudo, err := exec.LookPath("sudo"); err == nil {
