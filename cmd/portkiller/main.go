@@ -121,29 +121,38 @@ func (m *model) applyHealth() {
 
 func (m model) Init() tea.Cmd { return tickCmd() }
 
-func (m *model) rebuild() {
-	f := strings.ToLower(m.filter)
-	v := make([]PortItem, 0, len(m.all))
-	for _, it := range m.all {
-		if m.orphans && !it.Orphan {
-			continue
-		}
-		if m.proto == 0 && !strings.HasPrefix(it.Proto, "tcp") {
-			continue
-		}
-		if m.proto == 1 && !strings.HasPrefix(it.Proto, "udp") {
-			continue
-		}
-		hay := it.Port + " " + it.Process + " " + it.PID + " " + it.Addr + " " + it.Proto + " " + it.Project
-		if it.Cwd != "-" && it.Cwd != "" {
-			hay += " " + it.Cwd
-		}
-		if f == "" || strings.Contains(strings.ToLower(hay), f) {
-			v = append(v, it)
-		}
+// protoMatches reports whether an item passes the current protocol filter
+// (0=TCP only, 1=UDP only, 2=ALL).
+func (m model) protoMatches(it PortItem) bool {
+	switch m.proto {
+	case 0:
+		return strings.HasPrefix(it.Proto, "tcp")
+	case 1:
+		return strings.HasPrefix(it.Proto, "udp")
 	}
+	return true
+}
+
+// matchesFilter reports whether the item passes the orphan filter and the
+// free-text search (which also covers the project cwd).
+func (m model) matchesFilter(it PortItem, lowerFilter string) bool {
+	if m.orphans && !it.Orphan {
+		return false
+	}
+	if lowerFilter == "" {
+		return true
+	}
+	hay := it.Port + " " + it.Process + " " + it.PID + " " + it.Addr + " " + it.Proto + " " + it.Project
+	if it.Cwd != "-" && it.Cwd != "" {
+		hay += " " + it.Cwd
+	}
+	return strings.Contains(strings.ToLower(hay), lowerFilter)
+}
+
+// sortView orders the visible rows by the active sort mode (see sortNames).
+func sortView(v []PortItem, sortBy int) {
 	sort.SliceStable(v, func(i, j int) bool {
-		switch m.sortBy {
+		switch sortBy {
 		case 1:
 			return v[i].Process < v[j].Process
 		case 2:
@@ -158,6 +167,18 @@ func (m *model) rebuild() {
 			return a < b
 		}
 	})
+}
+
+func (m *model) rebuild() {
+	f := strings.ToLower(m.filter)
+	v := make([]PortItem, 0, len(m.all))
+	for _, it := range m.all {
+		if !m.protoMatches(it) || !m.matchesFilter(it, f) {
+			continue
+		}
+		v = append(v, it)
+	}
+	sortView(v, m.sortBy)
 	m.view = v
 	m.clamp()
 }
@@ -299,6 +320,35 @@ func (m *model) recordEvents(cur []PortItem) {
 	m.seeded = true
 }
 
+// pruneStaleHealth drops health results whose pid/port/proto combo is no
+// longer present, so PID reuse does not inherit an old status.
+func (m *model) pruneStaleHealth() {
+	if m.health == nil {
+		return
+	}
+	alive := make(map[string]healthResult, len(m.all))
+	for _, it := range m.all {
+		k := healthKey(it.Proto, it.Addr, it.Port, it.PID)
+		if r, ok := m.health[k]; ok {
+			alive[k] = r
+		}
+	}
+	m.health = alive
+}
+
+// finishWork clears the busy flag and reports a completed background task.
+// Every result message ends the same way: a status line and a refresh.
+func (m model) finishWork(okMsg, errMsg string, err error) (model, tea.Cmd) {
+	m.busy = false
+	m.msgAt = time.Now()
+	if err != nil {
+		m.message, m.isErr = errMsg, true
+	} else {
+		m.message, m.isErr = okMsg, false
+	}
+	return m, refreshCmd
+}
+
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -315,17 +365,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recordEvents([]PortItem(msg))
 		m.all = []PortItem(msg)
 		m.checkGuardNow()
-		// Drop stale results so PID reuse does not inherit an old status.
-		if m.health != nil {
-			alive := make(map[string]healthResult, len(m.all))
-			for _, it := range m.all {
-				k := healthKey(it.Proto, it.Addr, it.Port, it.PID)
-				if r, ok := m.health[k]; ok {
-					alive[k] = r
-				}
-			}
-			m.health = alive
-		}
+		m.pruneStaleHealth()
 		m.applyHealth()
 		m.rebuild()
 		m.refreshDetail()
@@ -359,44 +399,29 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case restartMsg:
-		m.busy = false
 		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Restart: %d OK, err: %v", msg.done, msg.err), true
-		} else {
-			m.message, m.isErr = fmt.Sprintf("Restarted: %d processes", msg.done), false
-			m.restarts = nil
+			return m.finishWork("", fmt.Sprintf("Restart: %d OK, err: %v", msg.done, msg.err), msg.err)
 		}
-		return m, refreshCmd
+		m.restarts = nil
+		return m.finishWork(fmt.Sprintf("Restarted: %d processes", msg.done), "", nil)
 
 	case actionMsg:
-		m.busy = false
-		m.msgAt = time.Now()
-		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Failed %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err), true
-		} else {
-			m.message, m.isErr = fmt.Sprintf("Stopped %s (port %s)", msg.item.Process, msg.item.Port), false
-		}
-		return m, refreshCmd
+		return m.finishWork(
+			fmt.Sprintf("Stopped %s (port %s)", msg.item.Process, msg.item.Port),
+			fmt.Sprintf("Failed %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err),
+			msg.err)
 
 	case projectMsg:
-		m.busy = false
-		m.msgAt = time.Now()
-		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Project %s: %d OK, err: %v", msg.project, msg.done, msg.err), true
-		} else {
-			m.message, m.isErr = fmt.Sprintf("Project %s: %d stopped", msg.project, msg.done), false
-		}
-		return m, refreshCmd
+		return m.finishWork(
+			fmt.Sprintf("Project %s: %d stopped", msg.project, msg.done),
+			fmt.Sprintf("Project %s: %d OK, err: %v", msg.project, msg.done, msg.err),
+			msg.err)
 
 	case orphansMsg:
-		m.busy = false
-		m.msgAt = time.Now()
-		if msg.err != nil {
-			m.message, m.isErr = fmt.Sprintf("Clean orphans: %d OK, err: %v", msg.done, msg.err), true
-		} else {
-			m.message, m.isErr = fmt.Sprintf("Cleaned orphans: %d processes (SIGTERM)", msg.done), false
-		}
-		return m, refreshCmd
+		return m.finishWork(
+			fmt.Sprintf("Cleaned orphans: %d processes (SIGTERM)", msg.done),
+			fmt.Sprintf("Clean orphans: %d OK, err: %v", msg.done, msg.err),
+			msg.err)
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -407,17 +432,27 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// reexecSudo relaunches the current binary under sudo so every process is
+// visible. It only returns when sudo is unavailable or the exec fails.
+func reexecSudo() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	sudo, err := exec.LookPath("sudo")
+	if err != nil {
+		return
+	}
+	syscall.Exec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
+}
+
 func main() {
 	// Help and version must work without a sudo prompt.
 	if !cliNeedsRoot(os.Args[1:]) && runCLI(os.Args[1:]) {
 		return
 	}
 	if os.Geteuid() != 0 {
-		if exe, err := os.Executable(); err == nil {
-			if sudo, err := exec.LookPath("sudo"); err == nil {
-				syscall.Exec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
-			}
-		}
+		reexecSudo()
 	}
 	if runCLI(os.Args[1:]) {
 		return

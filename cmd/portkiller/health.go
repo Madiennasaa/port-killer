@@ -32,13 +32,25 @@ func healthKey(proto, addr, port, pid string) string {
 	return proto + "-" + addr + "-" + port + "-" + pid
 }
 
-// dialTarget (pure): wildcard -> 127.0.0.1:port.
+// wildcardAddrs are listen addresses that mean "every interface": dial them
+// on loopback instead.
+var wildcardAddrs = map[string]bool{
+	"": true, "0.0.0.0": true, "*": true, "::": true, "[::]": true,
+}
+
+// isIPv6Literal reports whether addr is a bare IPv6 literal that still needs
+// brackets before a port can be appended.
+func isIPv6Literal(addr string) bool {
+	return strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[")
+}
+
+// dialTarget (pure): wildcard -> 127.0.0.1:port, bare IPv6 -> [addr]:port.
 func dialTarget(addr, port string) string {
 	a := strings.TrimSpace(addr)
-	if a == "" || a == "0.0.0.0" || a == "*" || a == "::" || a == "[::]" {
+	if wildcardAddrs[a] {
 		return "127.0.0.1:" + port
 	}
-	if strings.Contains(a, ":") && !strings.HasPrefix(a, "[") {
+	if isIPv6Literal(a) {
 		a = "[" + a + "]"
 	}
 	return a + ":" + port

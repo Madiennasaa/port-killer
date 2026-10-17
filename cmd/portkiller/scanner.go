@@ -43,6 +43,49 @@ func GetActivePorts() []PortItem {
 	return items
 }
 
+// ssListening reports whether an `ss` line is a listening socket we show.
+func ssListening(fields []string) bool {
+	if len(fields) < 7 {
+		return false
+	}
+	switch fields[1] {
+	case "LISTEN", "UNCONN":
+		return true
+	}
+	return false
+}
+
+// splitAddr splits "host:port" into its two halves; ok is false when there is
+// no ":" to split on (malformed or header lines).
+func splitAddr(localAddr string) (addr, port string, ok bool) {
+	i := strings.LastIndex(localAddr, ":")
+	if i == -1 {
+		return "", "", false
+	}
+	return localAddr[:i], localAddr[i+1:], true
+}
+
+// ssItem converts one `ss` line into a PortItem. ok is false when the line
+// carries no process info or names docker-proxy (the docker source owns those).
+func ssItem(fields []string) (PortItem, bool) {
+	addr, port, ok := splitAddr(fields[4])
+	if !ok {
+		return PortItem{}, false
+	}
+	pid, procName := parseProcessInfo(fields[len(fields)-1])
+	if pid == "" || procName == "docker-proxy" {
+		return PortItem{}, false
+	}
+	return PortItem{
+		Proto:   fields[0],
+		Addr:    addr,
+		Port:    port,
+		Process: procName,
+		PID:     pid,
+		Source:  "host",
+	}, true
+}
+
 // parseSS turns `ss -tulnp` output into host listeners.
 // Header/short/state-filtered lines and docker-proxy listeners are dropped,
 // and a pid+port seen twice is kept only once.
@@ -51,41 +94,19 @@ func parseSS(out string) []PortItem {
 	seen := make(map[string]bool)
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 7 {
+		if !ssListening(fields) {
 			continue
 		}
-		state := fields[1]
-		if state != "LISTEN" && state != "UNCONN" {
+		it, ok := ssItem(fields)
+		if !ok {
 			continue
 		}
-
-		proto := fields[0]
-		localAddr := fields[4]
-		i := strings.LastIndex(localAddr, ":")
-		if i == -1 {
-			continue
-		}
-		addr, port := localAddr[:i], localAddr[i+1:]
-
-		pid, procName := parseProcessInfo(fields[len(fields)-1])
-		if pid == "" || procName == "docker-proxy" {
-			continue
-		}
-
-		key := proto + "-" + port + "-" + pid
+		key := it.Proto + "-" + it.Port + "-" + it.PID
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-
-		items = append(items, PortItem{
-			Proto:   proto,
-			Addr:    addr,
-			Port:    port,
-			Process: procName,
-			PID:     pid,
-			Source:  "host",
-		})
+		items = append(items, it)
 	}
 	return items
 }
