@@ -165,11 +165,9 @@ func (m model) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// normalKey handles the main keymap once no overlay or dialog is up.
-func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
+// moveKey applies a cursor-movement key. handled is false for anything else.
+func (m model) moveKey(key string) (model, bool) {
 	switch key {
-	case "ctrl+c", "q", "f10":
-		return m, tea.Quit
 	case "up", "k":
 		m.cursor--
 	case "down", "j":
@@ -182,6 +180,83 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "end", "G":
 		m.cursor = len(m.view) - 1
+	default:
+		return m, false
+	}
+	return m, true
+}
+
+// startKill arms the stop dialog (force picks SIGKILL). ok is false when the
+// key is not a kill key; cmd carries the blast-info request when a dialog
+// actually opened.
+func (m model) startKill(key string) (model, tea.Cmd, bool) {
+	var force bool
+	switch key {
+	case "enter", "f9":
+		force = false
+	case "K", "f8":
+		force = true
+	default:
+		return m, nil, false
+	}
+	if m.busy {
+		return m, nil, true
+	}
+	m.askKill(force)
+	if m.mode != modeConfirm {
+		return m, nil, true
+	}
+	return m, blastCmd(m.target), true
+}
+
+// restartKey triggers "restart last stopped". ok is false for other keys.
+func (m model) restartKey(key string) (model, tea.Cmd, bool) {
+	if key != "R" {
+		return m, nil, false
+	}
+	if m.busy {
+		return m, nil, true
+	}
+	if len(m.restarts) == 0 {
+		m.message, m.isErr = "No recently stopped process to restart.", false
+		return m, nil, true
+	}
+	m.busy = true
+	m.message, m.isErr = "Restarting: "+restartDesc(m.restarts[0])+"...", false
+	return m, restartCmd(m.restarts), true
+}
+
+// normalKey handles the main keymap once no overlay or dialog is up.
+func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "ctrl+c", "q", "f10":
+		return m, tea.Quit
+	case "r", "f5":
+		return m, refreshCmd
+	}
+	if nm, handled := m.moveKey(key); handled {
+		m = nm
+	} else if nm, cmd, handled := m.startKill(key); handled {
+		if cmd != nil {
+			return nm, cmd
+		}
+		m = nm
+	} else if nm, cmd, handled := m.restartKey(key); handled {
+		if cmd != nil {
+			return nm, cmd
+		}
+		m = nm
+	} else {
+		m = m.viewToggleKey(key)
+	}
+	m.clamp()
+	m.refreshDetail()
+	return m, nil
+}
+
+// viewToggleKey applies the display/scope toggles and overlays.
+func (m model) viewToggleKey(key string) model {
+	switch key {
 	case "/", "f3":
 		m.mode = modeFilter
 	case "esc":
@@ -190,25 +265,9 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 	case "t", "f4":
 		m.proto = (m.proto + 1) % len(protoNames)
 		m.rebuild()
-	case "r", "f5":
-		return m, refreshCmd
 	case "s", "f6":
 		m.sortBy = (m.sortBy + 1) % len(sortNames)
 		m.rebuild()
-	case "enter", "f9":
-		if !m.busy {
-			m.askKill(false)
-			if m.mode == modeConfirm {
-				return m, blastCmd(m.target)
-			}
-		}
-	case "K", "f8":
-		if !m.busy {
-			m.askKill(true)
-			if m.mode == modeConfirm {
-				return m, blastCmd(m.target)
-			}
-		}
 	case "i", "tab":
 		m.showDetail = !m.showDetail
 	case "h":
@@ -220,17 +279,6 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 	case "?", "f1":
 		m.showHelp = true
-	case "R":
-		if m.busy {
-			break
-		}
-		if len(m.restarts) == 0 {
-			m.message, m.isErr = "No recently stopped process to restart.", false
-		} else {
-			m.busy = true
-			m.message, m.isErr = "Restarting: "+restartDesc(m.restarts[0])+"...", false
-			return m, restartCmd(m.restarts)
-		}
 	case "o":
 		m.orphans = !m.orphans
 		m.rebuild()
@@ -243,7 +291,5 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 			m.askCleanOrphans()
 		}
 	}
-	m.clamp()
-	m.refreshDetail()
-	return m, nil
+	return m
 }
