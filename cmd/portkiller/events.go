@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
@@ -63,13 +62,7 @@ func trimLines(s string, max int) string {
 }
 
 func eventsPath() string {
-	home, _ := os.UserHomeDir()
-	if su := os.Getenv("SUDO_USER"); su != "" {
-		if u, err := user.Lookup(su); err == nil && u.HomeDir != "" {
-			home = u.HomeDir
-		}
-	}
-	return filepath.Join(home, ".local", "state", "portkiller", "events.jsonl")
+	return filepath.Join(homeDir(), ".local", "state", "portkiller", "events.jsonl")
 }
 
 const maxEvents = 1000

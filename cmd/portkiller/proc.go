@@ -104,6 +104,24 @@ func storeHome(key, home string) {
 	userHomeCache[key] = home
 }
 
+// homeByUID resolves a home directory from a numeric uid.
+func homeByUID(id string) (string, bool) {
+	u, err := user.LookupId(id)
+	if err != nil || u.HomeDir == "" {
+		return "", false
+	}
+	return u.HomeDir, true
+}
+
+// homeByName resolves a home directory from a login name.
+func homeByName(name string) (string, bool) {
+	u, err := user.Lookup(name)
+	if err != nil || u.HomeDir == "" {
+		return "", false
+	}
+	return u.HomeDir, true
+}
+
 // ownerHome returns the home directory of the owner of /proc/<pid>.
 // Falls back to SUDO_USER, then $HOME. Does not spawn external processes.
 func ownerHome(pid int) string {
@@ -115,27 +133,16 @@ func ownerHome(pid int) string {
 			return h
 		}
 	}
-	byID := func(id string) (string, bool) {
-		u, err := user.LookupId(id)
-		if err != nil || u.HomeDir == "" {
-			return "", false
-		}
-		return u.HomeDir, true
-	}
-	byName := func(name string) (string, bool) {
-		u, err := user.Lookup(name)
-		if err != nil || u.HomeDir == "" {
-			return "", false
-		}
-		return u.HomeDir, true
-	}
-	if h, ok := lookupHomeForUid(uid, sudoUser, byID, byName); ok {
+	if h, ok := lookupHomeForUid(uid, sudoUser, homeByUID, homeByName); ok {
 		if uid != "" {
 			storeHome(cacheKey, h)
 		}
 		return h
 	}
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
 	return home
 }
 

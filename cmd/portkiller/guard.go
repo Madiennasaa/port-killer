@@ -65,14 +65,24 @@ func guardKey(v Violation) string {
 	return v.Rule.Port + "|" + v.Item.PID + "|" + v.Item.Proto
 }
 
-func guardPath() string {
-	home, _ := os.UserHomeDir()
+// homeDir returns the effective home directory: $SUDO_USER's home when running
+// under sudo, else $HOME. On lookup failure it returns "" so callers can fall
+// back rather than silently reading /root or a bogus path.
+func homeDir() string {
 	if su := os.Getenv("SUDO_USER"); su != "" {
 		if u, err := user.Lookup(su); err == nil && u.HomeDir != "" {
-			home = u.HomeDir
+			return u.HomeDir
 		}
 	}
-	return filepath.Join(home, ".config", "portkiller", "guard.conf")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
+}
+
+func guardPath() string {
+	return filepath.Join(homeDir(), ".config", "portkiller", "guard.conf")
 }
 
 func loadGuard() []Rule {

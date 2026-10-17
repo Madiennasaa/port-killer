@@ -149,6 +149,13 @@ func (m model) matchesFilter(it PortItem, lowerFilter string) bool {
 	return strings.Contains(strings.ToLower(hay), lowerFilter)
 }
 
+// sortNum is a numeric sort key for a pid/port field. A non-numeric value
+// (a docker container id, a dash) sorts as 0, which is fine for display order.
+func sortNum(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
 // sortView orders the visible rows by the active sort mode (see sortNames).
 func sortView(v []PortItem, sortBy int) {
 	sort.SliceStable(v, func(i, j int) bool {
@@ -156,15 +163,11 @@ func sortView(v []PortItem, sortBy int) {
 		case 1:
 			return v[i].Process < v[j].Process
 		case 2:
-			a, _ := strconv.Atoi(v[i].PID)
-			b, _ := strconv.Atoi(v[j].PID)
-			return a < b
+			return sortNum(v[i].PID) < sortNum(v[j].PID)
 		case 3:
 			return v[i].Proto < v[j].Proto
 		default:
-			a, _ := strconv.Atoi(v[i].Port)
-			b, _ := strconv.Atoi(v[j].Port)
-			return a < b
+			return sortNum(v[i].Port) < sortNum(v[j].Port)
 		}
 	})
 }
