@@ -57,7 +57,11 @@ func captureRestart(it PortItem) (Restartable, bool) {
 	if err != nil || !restartable(cmd, cwd) {
 		return Restartable{}, false
 	}
-	uid, _ := procUid(pid)
+	uid, ok := procUid(pid)
+	if !ok {
+		// /proc vanished between reads: the process is already gone.
+		return Restartable{}, false
+	}
 	return Restartable{Name: it.Process, Cmd: cmd, Cwd: cwd, UID: uid}, true
 }
 

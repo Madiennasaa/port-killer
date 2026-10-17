@@ -75,18 +75,27 @@ func lookupHomeForUid(uid, sudoUser string, byID func(string) (string, bool), by
 	return "", false
 }
 
-// procUID reads the owning uid of /proc/<pid>; ok is false when the process
-// is gone or /proc is unreadable.
+// procUID reads the owning uid of /proc/<pid> as a decimal string; ok is
+// false when the process is gone or /proc is unreadable (uid is "" then).
 func procUID(pid int) (string, bool) {
-	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
-	if err != nil {
-		return "", false
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
+	uid, ok := procUid(pid)
 	if !ok {
 		return "", false
 	}
-	return strconv.FormatUint(uint64(st.Uid), 10), true
+	return strconv.Itoa(uid), true
+}
+
+// procUid reads the owning uid of /proc/<pid> as an int.
+func procUid(pid int) (int, bool) {
+	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	if err != nil {
+		return 0, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return int(st.Uid), true
 }
 
 // cachedHome returns the cached home for key, if any.
@@ -125,7 +134,10 @@ func homeByName(name string) (string, bool) {
 // ownerHome returns the home directory of the owner of /proc/<pid>.
 // Falls back to SUDO_USER, then $HOME. Does not spawn external processes.
 func ownerHome(pid int) string {
-	uid, _ := procUID(pid)
+	uid, hasUID := procUID(pid)
+	if !hasUID {
+		uid = "" // process gone: skip the cache and go straight to the fallbacks
+	}
 	sudoUser := os.Getenv("SUDO_USER")
 	cacheKey := "id:" + uid + ":" + sudoUser
 	if uid != "" {
@@ -209,18 +221,6 @@ func isOrphan(ppid int, parentComm string, ttyNr int, name string, uid int, prot
 	return !isSystemProc(name, uid)
 }
 
-func procUid(pid int) (int, bool) {
-	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
-	if err != nil {
-		return 0, false
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, false
-	}
-	return int(st.Uid), true
-}
-
 func parentCommOf(ppid int) string {
 	b, err := os.ReadFile("/proc/" + strconv.Itoa(ppid) + "/comm")
 	if err != nil {
@@ -250,7 +250,11 @@ func enrichOrphan(item *PortItem) {
 		item.Orphan = false
 		return
 	}
-	uid, _ := procUid(pid)
+	uid, ok := procUid(pid)
+	if !ok {
+		// Gone before we could read its owner: uid 0 keeps isOrphan conservative.
+		uid = 0
+	}
 	item.Orphan = isOrphan(ppid, parentCommOf(ppid), ttyNr, item.Process, uid, item.Proto, item.Project)
 }
 

@@ -15,8 +15,16 @@ func chownToSudoUser(paths ...string) {
 	if err != nil {
 		return
 	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
+	// user.Uid/Gid are always decimal strings on Unix; a parse failure means
+	// a broken NSS entry, and chowning to 0:0 would be worse than leaving it.
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return
+	}
 	for _, p := range paths {
 		os.Chown(p, uid, gid)
 	}
