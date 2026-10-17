@@ -50,13 +50,7 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 		done := 0
 		var firstErr error
 		for _, it := range snap {
-			var err error
-			if it.IsDocker() {
-				err = StopContainer(it.PID)
-			} else {
-				err = KillProcess(it.PID, false)
-			}
-			if err == nil {
+			if err := stopItem(it, false); err == nil {
 				done++
 			} else if firstErr == nil {
 				firstErr = err
@@ -88,13 +82,7 @@ func tickCmd() tea.Cmd {
 
 func killCmd(item PortItem, force bool) tea.Cmd {
 	return func() tea.Msg {
-		var err error
-		if item.IsDocker() {
-			err = StopContainer(item.PID)
-		} else {
-			err = KillProcess(item.PID, force)
-		}
-		return actionMsg{item: item, force: force, err: err}
+		return actionMsg{item: item, force: force, err: stopItem(item, force)}
 	}
 }
 
