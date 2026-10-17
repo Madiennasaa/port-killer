@@ -19,50 +19,74 @@ func keyFromString(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
+// mouseWheel applies a wheel delta to the cursor.
+func (m model) mouseWheel(delta int) model {
+	m.cursor += delta
+	m.clamp()
+	m.refreshDetail()
+	return m
+}
+
+// footerClick maps an x position on the footer line to a footer key, and
+// dispatches that key. ok is false when the click hit a gap between keys.
+func (m model) footerClick(x int) (model, tea.Cmd, bool) {
+	at := 0
+	for _, f := range footerKeys {
+		w := len(f.key) + len(f.label)
+		if x >= at && x < at+w {
+			nm, cmd := m.handleKey(keyFromString(f.send))
+			return nm.(model), cmd, true
+		}
+		at += w
+	}
+	return m, nil, false
+}
+
+// rowClick selects the row under y. Clicking the already-selected row (or
+// right-clicking any row) opens the kill dialog for it.
+func (m model) rowClick(y int, right bool) (model, tea.Cmd) {
+	row := y - 1
+	if row < 0 || row >= m.rows() {
+		return m, nil
+	}
+	idx := m.offset + row
+	if idx >= len(m.view) {
+		return m, nil
+	}
+	again := idx == m.cursor
+	m.cursor = idx
+	m.clamp()
+	m.refreshDetail()
+	if again || right {
+		nm, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+		return nm.(model), cmd
+	}
+	return m, nil
+}
+
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.showHelp || m.showHistory || m.mode != modeNormal {
 		return m, nil
 	}
-	switch {
-	case msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress:
-		m.cursor--
-		m.clamp()
-		m.refreshDetail()
-		return m, nil
-	case msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress:
-		m.cursor++
-		m.clamp()
-		m.refreshDetail()
-		return m, nil
+	if msg.Action == tea.MouseActionPress {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			return m.mouseWheel(-1), nil
+		case tea.MouseButtonWheelDown:
+			return m.mouseWheel(1), nil
+		}
 	}
-	if msg.Action != tea.MouseActionPress || (msg.Button != tea.MouseButtonLeft && msg.Button != tea.MouseButtonRight) {
+	if msg.Action != tea.MouseActionPress ||
+		(msg.Button != tea.MouseButtonLeft && msg.Button != tea.MouseButtonRight) {
 		return m, nil
 	}
 	if msg.Y == m.height-1 {
-		x := 0
-		for _, f := range footerKeys {
-			w := len(f.key) + len(f.label)
-			if msg.X >= x && msg.X < x+w {
-				return m.handleKey(keyFromString(f.send))
-			}
-			x += w
+		if nm, cmd, ok := m.footerClick(msg.X); ok {
+			return nm, cmd
 		}
 		return m, nil
 	}
-	row := msg.Y - 1
-	if row >= 0 && row < m.rows() {
-		idx := m.offset + row
-		if idx < len(m.view) {
-			again := idx == m.cursor
-			m.cursor = idx
-			m.clamp()
-			m.refreshDetail()
-			if again || msg.Button == tea.MouseButtonRight {
-				return m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-			}
-		}
-	}
-	return m, nil
+	return m.rowClick(msg.Y, msg.Button == tea.MouseButtonRight)
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

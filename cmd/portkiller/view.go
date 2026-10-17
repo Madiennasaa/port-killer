@@ -62,7 +62,10 @@ func sysUptime() string {
 	if len(f) == 0 {
 		return "?"
 	}
-	s, _ := strconv.ParseFloat(f[0], 64)
+	s, err := strconv.ParseFloat(f[0], 64)
+	if err != nil {
+		return "?"
+	}
 	t := int(s)
 	return fmt.Sprintf("%dd %02dh %02dm", t/86400, t%86400/3600, t%3600/60)
 }

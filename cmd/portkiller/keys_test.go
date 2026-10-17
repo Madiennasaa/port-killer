@@ -278,3 +278,60 @@ func TestHandleKeyRefresh(t *testing.T) {
 		t.Error("r should trigger a refresh")
 	}
 }
+
+func TestMouseWheel(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	got := m.mouseWheel(1)
+	if got.cursor != 1 {
+		t.Errorf("wheel down: cursor = %d", got.cursor)
+	}
+	got = m.mouseWheel(-2)
+	if got.cursor != 0 {
+		t.Errorf("wheel up past top: cursor = %d", got.cursor)
+	}
+}
+
+func TestFooterClickGap(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.height = 24
+	// X far beyond the footer: no key, no mode change.
+	nm, cmd, ok := m.footerClick(10000)
+	if ok || cmd != nil || nm.mode != modeNormal {
+		t.Errorf("gap click: ok=%v cmd=%v mode=%v", ok, cmd, nm.mode)
+	}
+}
+
+func TestRowClickOutOfRange(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.height = 24
+	// Header row (y=0) and a row past the table: no selection change.
+	if nm, cmd := m.rowClick(0, false); nm.cursor != 0 || cmd != nil {
+		t.Errorf("header click: cursor=%d cmd=%v", nm.cursor, cmd)
+	}
+	m.view = nil
+	if nm, cmd := m.rowClick(1, false); cmd != nil || nm.cursor != 0 {
+		t.Errorf("empty table click: cursor=%d cmd=%v", nm.cursor, cmd)
+	}
+}
+
+func TestRowClickSecondClickConfirms(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.height = 24
+	m.cursor = 1 // start away from the row we click
+	// First click selects; second click on the same row arms the dialog.
+	nm, _ := m.rowClick(1, false)
+	if nm.cursor != 0 || nm.mode != modeNormal {
+		t.Fatalf("first click should only select row 0, cursor=%d mode=%v", nm.cursor, nm.mode)
+	}
+	nm, cmd := nm.rowClick(1, false)
+	if nm.mode != modeConfirm {
+		t.Errorf("second click should confirm, mode = %v", nm.mode)
+	}
+	if cmd == nil {
+		t.Error("confirm click should request blast info")
+	}
+}
