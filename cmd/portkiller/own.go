@@ -6,9 +6,13 @@ import (
 	"strconv"
 )
 
+// effectiveUID is a seam so chownToSudoUser's root path is testable without
+// an actual root process.
+var effectiveUID = os.Geteuid
+
 func chownToSudoUser(paths ...string) {
 	su := os.Getenv("SUDO_USER")
-	if os.Geteuid() != 0 || su == "" {
+	if effectiveUID() != 0 || su == "" {
 		return
 	}
 	u, err := user.Lookup(su)

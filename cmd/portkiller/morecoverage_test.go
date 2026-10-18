@@ -60,6 +60,16 @@ func TestRestartKeyBusy(t *testing.T) {
 	if _, _, ok := m.restartKey("x"); ok {
 		t.Fatal("non-R key must not be handled")
 	}
+	// Empty stack: no command, message set, not busy.
+	m.busy = false
+	m.restarts = nil
+	nm, cmd, ok := m.restartKey("R")
+	if !ok || cmd != nil || nm.busy {
+		t.Fatal("empty restart stack must not run")
+	}
+	if !containsAll(nm.message, "No recently stopped") {
+		t.Fatalf("message = %q", nm.message)
+	}
 }
 
 func TestConfirmKeyAccept(t *testing.T) {
@@ -174,6 +184,26 @@ func TestAskStopProjectArmsDialog(t *testing.T) {
 	}
 }
 
+func TestAskStopProjectNoSafeTargets(t *testing.T) {
+	withTempHome(t)
+	// A project made entirely of a system process has no safe kill targets.
+	m := testModel()
+	m.all = []PortItem{{
+		Proto: "tcp", Addr: "0.0.0.0", Port: "22",
+		PID: itoaSimple(os.Getpid()), Process: "sshd", Source: "host", Project: "sys",
+	}}
+	m.rebuild()
+	m.view = m.all
+	m.cursor = 0
+	m.askStopProject()
+	if m.mode == modeConfirmProject {
+		t.Fatal("a system-only project must not arm the dialog")
+	}
+	if !containsAll(m.message, "no safe targets") {
+		t.Fatalf("message = %q", m.message)
+	}
+}
+
 func TestAskCleanOrphansArmsDialog(t *testing.T) {
 	withTempHome(t)
 	m := testModel()
@@ -277,6 +307,28 @@ func TestHomeDirSudoUser(t *testing.T) {
 	if got := homeDir(); got == "" {
 		t.Error("$HOME must resolve")
 	}
+	// A valid SUDO_USER resolves that user's home.
+	u, err := user.Current()
+	if err == nil && u.Username != "" {
+		t.Setenv("SUDO_USER", u.Username)
+		if got := homeDir(); got == "" {
+			t.Error("valid SUDO_USER must resolve a home")
+		}
+	}
+}
+
+func TestRestartKeyWithItems(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.restarts = []Restartable{{Cmd: []string{"true"}, Cwd: t.TempDir(), UID: os.Getuid()}}
+	nm, cmd, ok := m.restartKey("R")
+	if !ok || cmd == nil {
+		t.Fatal("restart with items must return a command")
+	}
+	got := nm
+	if !got.busy || !containsAll(got.message, "Restarting:") {
+		t.Fatalf("busy=%v message=%q", got.busy, got.message)
+	}
 }
 
 // ---- health.go ----
@@ -373,6 +425,18 @@ func TestEnrichOrphanBadPIDAndDocker(t *testing.T) {
 	enrichOrphan(&it)
 	if it.Orphan {
 		t.Error("no project must not be an orphan")
+	}
+	// A live process whose /proc/<pid>/stat is unreadable (race) is not an orphan.
+	it = PortItem{Source: "host", PID: "999999999", Process: "x", Proto: "tcp", Project: "app"}
+	enrichOrphan(&it)
+	if it.Orphan {
+		t.Error("vanished pid must not be an orphan")
+	}
+	// A live process that parses fine is judged by isOrphan (tty, ppid, ...).
+	it = PortItem{Source: "host", PID: itoaSimple(os.Getpid()), Process: "x", Proto: "tcp", Project: "app"}
+	enrichOrphan(&it)
+	if it.Orphan {
+		t.Error("a tty-attached process must not be an orphan")
 	}
 }
 

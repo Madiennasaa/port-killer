@@ -12,6 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// lookupUserById is a seam so restartOne's root-credential path is testable
+// without an actual root process.
+var lookupUserById = user.LookupId
+
 // Restartable holds process data recorded before it is stopped.
 type Restartable struct {
 	Name   string
@@ -92,8 +96,8 @@ func restartOne(r Restartable) error {
 	c := exec.Command(r.Cmd[0], r.Cmd[1:]...)
 	c.Dir = r.Cwd
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if os.Geteuid() == 0 && r.UID != 0 {
-		u, err := user.LookupId(strconv.Itoa(r.UID))
+	if effectiveUID() == 0 && r.UID != 0 {
+		u, err := lookupUserById(strconv.Itoa(r.UID))
 		if err != nil {
 			return err
 		}
