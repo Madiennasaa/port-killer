@@ -271,3 +271,21 @@ func TestCLIListJSONEmptyIsArray(t *testing.T) {
 		t.Errorf("json = %q, want []", strings.TrimSpace(out))
 	}
 }
+
+func TestCLIListTextPrintsOneRowPerListener(t *testing.T) {
+	// The plain --list table must print a row per listener; CI runners often
+	// have none, so the row comes from the seam, not the host.
+	stubActivePorts(t, []PortItem{
+		{Proto: "tcp", Addr: "127.0.0.1", Port: "8080", PID: "42", Project: "demo", Process: "node"},
+		{Proto: "tcp", Addr: "::1", Port: "9090", PID: "43", Project: "demo", Process: "go"},
+	})
+	out := captureStdout(t, func() { cliList(false) })
+	for _, want := range []string{"8080", "node", "9090", "go"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("table is missing %q:\n%s", want, out)
+		}
+	}
+	if got := strings.Count(out, "\n"); got != 2 {
+		t.Errorf("row count = %d, want 2\n%s", got, out)
+	}
+}
