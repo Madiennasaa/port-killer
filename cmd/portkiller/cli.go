@@ -139,10 +139,15 @@ func cliList(asJSON bool) {
 // cliKill stops everything listening on port. Exit codes: 1 = nothing stopped
 // or at least one failure, 2 = bad --kill argument.
 func cliKill(args []string, force bool) {
-	port, _ := killArgs(args)
+	port, forceFlag := killArgs(args)
 	if port == "" {
 		fmt.Fprintln(os.Stderr, "--kill needs a port number")
 		os.Exit(2)
+	}
+	// runCLI already decided --force from the same args; keep that decision and
+	// note the disagreement so a future arg-parsing change cannot hide it.
+	if forceFlag != force {
+		fmt.Fprintln(os.Stderr, "warning: --force was given but cliKill was called without it")
 	}
 
 	n, failed := killLoop(port, force, GetActivePorts(), stopItem)
