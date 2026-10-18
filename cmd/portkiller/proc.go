@@ -151,12 +151,16 @@ func ownerHome(pid int) string {
 		}
 		return h
 	}
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return ""
 	}
 	return home
 }
+
+// userHomeDir is a seam so homeDir's and ownerHome's "$HOME unreadable"
+// fallbacks are testable without unsetting the real environment.
+var userHomeDir = os.UserHomeDir
 
 // normalizeProjectName (pure): "" / "." / "/" -> "-".
 func normalizeProjectName(s string) string {

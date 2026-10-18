@@ -74,7 +74,7 @@ func homeDir() string {
 			return h
 		}
 	}
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return ""
 	}

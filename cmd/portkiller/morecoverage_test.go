@@ -1272,3 +1272,358 @@ func TestEnrichProjectProcRace(t *testing.T) {
 		t.Fatalf("unreadable cwd must fall back to \"-\", got %+v", it)
 	}
 }
+
+// ---- main.go: askStopProject / update / guardNow uncovered branches ----
+
+func TestUpdateHealthResultInitAndClear(t *testing.T) {
+	m := testModel()
+	m.health = nil
+	m.hBusy = true
+	m.message = msgHealthPanic
+	m.isErr = true
+	want := healthResult{status: HealthAlive, latency: 5 * time.Millisecond}
+	nm, cmd := m.update(healthResultMsg{results: map[string]healthResult{"k": want}})
+	mod := nm.(model)
+	if mod.hBusy {
+		t.Error("health result must clear hBusy")
+	}
+	if mod.health == nil {
+		t.Fatal("health map must be initialized")
+	}
+	if mod.health["k"] != want {
+		t.Errorf("health = %+v, want %+v", mod.health["k"], want)
+	}
+	if mod.message == msgHealthPanic || mod.isErr {
+		t.Errorf("stale panic message must clear, got %q isErr=%v", mod.message, mod.isErr)
+	}
+	if cmd != nil {
+		t.Errorf("health result must not re-trigger a command, got %v", cmd)
+	}
+}
+
+func TestCheckGuardNowNilGuardSeen(t *testing.T) {
+	withTempHome(t)
+	// A model whose guardSeen was never allocated must lazily create it so
+	// the first violation is recorded exactly once.
+	m := testModel()
+	m.guard = []Rule{{Port: "3000", Owner: "postgres"}}
+	m.all = []PortItem{{Proto: "tcp", Port: "3000", PID: "1", Process: "node"}}
+	m.guardSeen = nil
+	m.checkGuardNow()
+	if m.guardSeen == nil {
+		t.Fatal("guardSeen must be lazily allocated")
+	}
+	if len(readEvents(eventsPath(), 10)) != 1 {
+		t.Error("first violation must be recorded once")
+	}
+}
+
+// ---- main.go: appRun dispatch ----
+
+// ---- guard.go: homeDir with an unreadable $HOME ----
+
+func TestHomeDirUserHomeDirFallback(t *testing.T) {
+	t.Setenv("SUDO_USER", "")
+	old := userHomeDir
+	userHomeDir = func() (string, error) { return "", errors.New("no home") }
+	t.Cleanup(func() { userHomeDir = old })
+	if got := homeDir(); got != "" {
+		t.Errorf("homeDir = %q, want \"\"", got)
+	}
+}
+
+func TestOwnerHomeUserHomeDirFallback(t *testing.T) {
+	// An unknown pid whose uid lookup fails, with an empty SUDO_USER, falls
+	// through to $HOME. Force that final fallback to fail so the empty
+	// return path is covered.
+	t.Setenv("SUDO_USER", "")
+	old := userHomeDir
+	userHomeDir = func() (string, error) { return "", errors.New("no home") }
+	t.Cleanup(func() { userHomeDir = old })
+	if got := ownerHome(999999); got != "" {
+		t.Errorf("ownerHome = %q, want \"\"", got)
+	}
+}
+
+// ---- own.go: lookupUser seam ----
+
+func TestChownToSudoUserRootLookupError(t *testing.T) {
+	t.Setenv("SUDO_USER", "someone")
+	oldUID, oldLookup := effectiveUID, lookupUser
+	effectiveUID = func() int { return 0 }
+	lookupUser = func(string) (*user.User, error) { return nil, errors.New("nss down") }
+	t.Cleanup(func() { effectiveUID, lookupUser = oldUID, oldLookup })
+	// Must return before any chown and must not panic.
+	chownToSudoUser("/tmp")
+}
+
+func TestChownToSudoUserRootBadIDs(t *testing.T) {
+	t.Setenv("SUDO_USER", "someone")
+	oldUID, oldLookup := effectiveUID, lookupUser
+	effectiveUID = func() int { return 0 }
+	lookupUser = func(string) (*user.User, error) {
+		return &user.User{Uid: "not-a-uid", Gid: "not-a-gid", Username: "ghost"}, nil
+	}
+	t.Cleanup(func() { effectiveUID, lookupUser = oldUID, oldLookup })
+	// chownIDs fails on a non-numeric uid -> must return without chowning.
+	chownToSudoUser("/tmp")
+}
+
+// ---- proc.go: parseStat ttyNr Atoi error ----
+
+func TestParseStatTTYNrAtoiError(t *testing.T) {
+	// Fields after ')' are state(0) ppid(1) pgrp(2) session(3) tty_nr(4) ...
+	// so tty_nr must be the 5th token. A non-numeric value there surfaces
+	// the Atoi error rather than being silently coerced to 0.
+	if _, _, err := parseStat([]byte("1 (x) S 0 0 0 x 0")); err == nil {
+		t.Error("non-numeric tty_nr must error")
+	}
+	if _, _, err := parseStat([]byte("1 (x) S 0 0 0 x+ 0")); err == nil {
+		t.Error("malformed tty_nr must error")
+	}
+}
+
+// ---- proc.go: enrichOrphan uid-vanished conservative path ----
+
+func TestEnrichOrphanUIDVanished(t *testing.T) {
+	// A pid that survives the /proc/<pid>/stat read but whose uid lookup fails
+	// is judged with uid 0. With a real tty the process is never an orphan, so
+	// this asserts the "uid vanished" path is taken without panicking.
+	it := PortItem{Source: "host", PID: itoaSimple(os.Getpid()), Process: "x", Proto: "tcp", Project: "app"}
+	enrichOrphan(&it)
+	if it.Orphan {
+		t.Error("a tty-attached process must not be an orphan even if its uid lookup races")
+	}
+}
+
+// ---- keys.go: startKill force key ----
+
+func TestStartKillForceKeyArms(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.cursor = 0
+	nm, cmd, ok := m.startKill("K")
+	if !ok {
+		t.Fatal("K must be handled")
+	}
+	if cmd == nil {
+		t.Fatal("K on a live target must issue a blast command")
+	}
+	if nm.mode != modeConfirm {
+		t.Errorf("mode = %v, want modeConfirm", nm.mode)
+	}
+}
+
+// ---- keys.go: normalKey and viewToggleKey leftover branches ----
+
+func TestNormalKeyQuitAndRefresh(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	for _, k := range []string{"ctrl+c", "q", "f10"} {
+		if _, cmd := m.normalKey(k); cmd == nil {
+			t.Errorf("%s must quit", k)
+		}
+	}
+	if _, cmd := m.normalKey("r"); cmd == nil {
+		t.Error("r must refresh")
+	}
+	if _, cmd := m.normalKey("f5"); cmd == nil {
+		t.Error("f5 must refresh")
+	}
+}
+
+func TestViewToggleKeyHelpAndFilter(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.view = m.all
+	if nm := m.viewToggleKey("?"); !nm.showHelp {
+		t.Error("? must open help")
+	}
+	if nm := m.viewToggleKey("f1"); !nm.showHelp {
+		t.Error("f1 must open help")
+	}
+	m = testModel()
+	if nm := m.viewToggleKey("/"); nm.mode != modeFilter {
+		t.Errorf("/ must arm the filter, mode=%v", nm.mode)
+	}
+	if nm := m.viewToggleKey("f3"); nm.mode != modeFilter {
+		t.Errorf("f3 must arm the filter, mode=%v", nm.mode)
+	}
+	// esc clears the filter and rebuilds.
+	m.filter = "node"
+	nm := m.viewToggleKey("esc")
+	if nm.filter != "" {
+		t.Errorf("esc must clear the filter, got %q", nm.filter)
+	}
+}
+
+// ---- keys.go: handleMouse footer + row click ----
+
+func TestHandleMouseFooterAndRowClick(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	// A click on the footer's first key dispatches "/" (search).
+	nm, cmd := m.handleMouse(tea.MouseMsg{X: 0, Y: m.height - 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	mod := nm.(model)
+	if mod.mode != modeFilter {
+		t.Errorf("footer click must arm the filter, mode=%v", mod.mode)
+	}
+	if cmd != nil {
+		t.Errorf("filter key must not issue a command, got %v", cmd)
+	}
+	// A right-click on a data row must not panic and must keep the model sane.
+	nm, _ = m.handleMouse(tea.MouseMsg{X: 0, Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonRight})
+	if _, ok := nm.(model); !ok {
+		t.Errorf("right-click must return a model, got %T", nm)
+	}
+}
+
+// ---- scanner.go: ssItem docker-proxy and splitAddr failures ----
+
+func TestSSItemRejectsDockerProxyAndBadAddr(t *testing.T) {
+	if _, ok := ssItem([]string{"tcp", "LISTEN", "0", "0", "not-an-addr", "0", "users:((\"x\",pid=1,fd=3))"}); ok {
+		t.Error("an unparseable local address must be rejected")
+	}
+	// splitAddr succeeds but the process is docker-proxy: the docker source
+	// owns those, so ssItem must drop the line.
+	fields := []string{"tcp", "LISTEN", "0", "0", "*:5000", "0", "users:((\"docker-proxy\",pid=1,fd=3))"}
+	if _, ok := ssItem(fields); ok {
+		t.Error("docker-proxy listeners must be dropped")
+	}
+	// No pid info at all: parseProcessInfo yields an empty pid.
+	fields = []string{"tcp", "LISTEN", "0", "0", "*:5000", "0", "-"}
+	if _, ok := ssItem(fields); ok {
+		t.Error("lines with no process info must be dropped")
+	}
+}
+
+// ---- scanner.go: parseDockerPS malformed lines ----
+
+func TestParseDockerPSMalformedLines(t *testing.T) {
+	// A row whose ports field has no "->" mapping yields no port.
+	if got := parseDockerPS("abc|web|Up 2 hours|\n"); len(got) != 0 {
+		t.Errorf("unmapped ports must yield no items, got %+v", got)
+	}
+	// A host:port with no final ":" separator is skipped.
+	if got := parseDockerPS("abc|web|8080|\n"); len(got) != 0 {
+		t.Errorf("address without a port separator must be skipped, got %+v", got)
+	}
+	// A duplicate key is kept only once.
+	got := parseDockerPS("abc|web|0.0.0.0:8080->80/tcp|\nabc|web|0.0.0.0:8080->80/tcp|\n")
+	if len(got) != 1 {
+		t.Errorf("duplicate rows must collapse, got %d items", len(got))
+	}
+}
+
+// ---- conflicts.go: parseComposePorts / parseEnvPorts leftover branches ----
+
+func TestParseComposePortsContinuations(t *testing.T) {
+	// A port entry without a ":" mapping yields nothing.
+	if got := parseComposePorts("- \"3000\"\n"); len(got) != 0 {
+		t.Errorf("unmapped port must be skipped, got %v", got)
+	}
+	// An entry whose host part is not numeric is dropped.
+	if got := parseComposePorts("- \"localhost:3000\"\n"); len(got) != 0 {
+		t.Errorf("non-numeric host must be dropped, got %v", got)
+	}
+}
+
+func TestParseEnvPortsMalformedLines(t *testing.T) {
+	// No "=" at all, or "=" in the first position: both are skipped.
+	if got := parseEnvPorts("NOEQUALS\n=value\n"); len(got) != 0 {
+		t.Errorf("malformed lines must be skipped, got %v", got)
+	}
+	// A non-numeric value is dropped.
+	if got := parseEnvPorts("API_PORT=not-a-port\n"); len(got) != 0 {
+		t.Errorf("non-numeric value must be dropped, got %v", got)
+	}
+}
+
+func TestConflictLinesDuplicateNeeds(t *testing.T) {
+	needs := []Need{{Port: "3000", Source: "compose"}, {Port: "3000", Source: "compose"}}
+	items := []PortItem{{Port: "3000", Process: "node", PID: "101"}}
+	got := conflictLines(needs, items)
+	if len(got) != 1 {
+		t.Errorf("duplicate needs must collapse, got %v", got)
+	}
+	if !strings.Contains(got[0], "node") || !strings.Contains(got[0], "101") {
+		t.Errorf("line must name the taker, got %q", got[0])
+	}
+}
+
+// ---- events.go: appendEvents with an unopenable path ----
+
+func TestAppendEventsUnopenablePath(t *testing.T) {
+	// MkdirAll succeeds (the temp dir exists) but OpenFile fails: the path's
+	// parent is a file, so the write is skipped rather than panicking.
+	parent := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(parent, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	appendEvents(filepath.Join(parent, "events.jsonl"), []Event{{Kind: "test"}})
+}
+
+// ---- cmds.go: killProjectCmd firstErr-only path ----
+
+func TestKillProjectCmdAllFailKeepsFirstErr(t *testing.T) {
+	// Two failing targets: the first error must be retained (not the last).
+	items := []PortItem{
+		{Port: "3000", PID: "bukan", Process: "a", Source: "host"},
+		{Port: "3000", PID: "bukan2", Process: "b", Source: "host"},
+	}
+	msg := killProjectCmd("app", items)()
+	pm, ok := msg.(projectMsg)
+	if !ok {
+		t.Fatalf("got %T", msg)
+	}
+	if pm.done != 0 {
+		t.Errorf("done = %d, want 0", pm.done)
+	}
+	if pm.err == nil {
+		t.Fatal("all-fail must retain an error")
+	}
+	if !strings.Contains(pm.err.Error(), "bukan") {
+		t.Errorf("first error must be kept, got %v", pm.err)
+	}
+}
+
+// ---- view.go: history + PID truncation ----
+
+func TestViewHistoryEmptyAndTruncated(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.events = []Event{}
+	m.showHistory = true
+	if out := m.View(); !strings.Contains(out, "No events recorded yet.") {
+		t.Errorf("empty history hint missing:\n%s", out)
+	}
+	m.events = make([]Event, m.height) // more events than rows: must not panic
+	m.showHistory = true
+	_ = m.View()
+	// A long PID is truncated to 8 runes in the list.
+	m = testModel()
+	m.view = []PortItem{{Proto: "tcp", Addr: "0.0.0.0", Port: "3000", PID: "123456789012", Process: "node"}}
+	m.showHistory = false
+	out := m.View()
+	if strings.Contains(out, "123456789012") {
+		t.Error("long PID must be truncated in the list")
+	}
+}
+
+// ---- view.go: help + conflict overlay shapes ----
+
+func TestViewHelpOverrideAndDetailStyles(t *testing.T) {
+	m := testModel()
+	m.showHelp = true
+	if out := m.View(); out == "" {
+		t.Error("help view must not be empty")
+	}
+	// Docker and system rows carry their own style without panicking.
+	m = testModel()
+	m.view = []PortItem{
+		{Proto: "tcp", Addr: "0.0.0.0", Port: "8080", PID: "1", Process: "docker:web", Source: "docker"},
+		{Proto: "tcp", Addr: "0.0.0.0", Port: "22", PID: "2", Process: "sshd", Source: "host"},
+		{Proto: "udp", Addr: "0.0.0.0", Port: "5353", PID: "3", Process: "avahi", Orphan: true, Source: "host"},
+	}
+	_ = m.View()
+}

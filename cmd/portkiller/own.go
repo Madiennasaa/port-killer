@@ -10,12 +10,15 @@ import (
 // an actual root process.
 var effectiveUID = os.Geteuid
 
+// lookupUser is a seam so chownToSudoUser's lookup-failure path is testable.
+var lookupUser = user.Lookup
+
 func chownToSudoUser(paths ...string) {
 	su := os.Getenv("SUDO_USER")
 	if effectiveUID() != 0 || su == "" {
 		return
 	}
-	u, err := user.Lookup(su)
+	u, err := lookupUser(su)
 	if err != nil {
 		return
 	}
