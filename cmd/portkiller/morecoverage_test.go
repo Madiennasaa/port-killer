@@ -1396,6 +1396,62 @@ func TestEnrichOrphanUIDVanished(t *testing.T) {
 	}
 }
 
+func TestProcUIDStatRaceAndNonStatT(t *testing.T) {
+	// A pid that vanishes between lookup and Stat: (0, false).
+	old := statProc
+	statProc = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+	t.Cleanup(func() { statProc = old })
+	if uid, ok := procUID(1); ok || uid != "" {
+		t.Errorf("vanished pid: uid=%q ok=%v, want \"\"/false", uid, ok)
+	}
+	// A FileInfo whose Sys() is not a *syscall.Stat_t: (0, false) as well.
+	statProc = func(string) (os.FileInfo, error) { return fakeFileInfo{}, nil }
+	t.Cleanup(func() { statProc = old })
+	if _, ok := procUID(1); ok {
+		t.Error("non-Stat_t FileInfo must report ok=false")
+	}
+}
+
+type fakeFileInfo struct{ os.FileInfo }
+
+func (fakeFileInfo) Sys() any { return "not a Stat_t" }
+
+func TestEnrichOrphanParseStatRace(t *testing.T) {
+	// The pid is readable but /proc/<pid>/stat yields unparseable bytes:
+	// the item must be marked not-an-orphan rather than panicking.
+	old := procFile
+	procFile = func(string) ([]byte, error) { return []byte("garbage"), nil }
+	t.Cleanup(func() { procFile = old })
+	it := PortItem{Source: "host", PID: itoaSimple(os.Getpid()), Process: "x", Proto: "tcp", Project: "app"}
+	enrichOrphan(&it)
+	if it.Orphan {
+		t.Error("unparseable stat must not be an orphan")
+	}
+}
+
+// ---- main.go: recordEvents drops udp noise, keeps the rest ----
+
+func TestRecordEventsKeepsTCPAndDropsUDPNoise(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.seeded = true
+	// A udp item whose cause is not "stopped via portkiller" is noise and is
+	// filtered; the tcp item must still be recorded.
+	m.cause, m.causeAt = "unknown", time.Now()
+	m.all = []PortItem{
+		{Proto: "udp", Port: "5353", PID: "1", Process: "avahi"},
+		{Proto: "tcp", Port: "3000", PID: "2", Process: "node"},
+	}
+	m.recordEvents(nil)
+	evs := readEvents(eventsPath(), 10)
+	if len(evs) != 1 {
+		t.Fatalf("want exactly the tcp event, got %d", len(evs))
+	}
+	if evs[0].Proto != "tcp" {
+		t.Errorf("proto = %q, want tcp", evs[0].Proto)
+	}
+}
+
 // ---- keys.go: startKill force key ----
 
 func TestStartKillForceKeyArms(t *testing.T) {

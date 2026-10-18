@@ -85,9 +85,16 @@ func procUID(pid int) (string, bool) {
 	return strconv.Itoa(uid), true
 }
 
+// statProc and statFile are seams so procUid's and enrichOrphan's /proc race
+// and non-Stat_t paths are testable. Production always uses the real syscalls.
+var (
+	statProc = os.Stat
+	procFile = os.ReadFile
+)
+
 // procUid reads the owning uid of /proc/<pid> as an int.
 func procUid(pid int) (int, bool) {
-	fi, err := os.Stat("/proc/" + strconv.Itoa(pid))
+	fi, err := statProc("/proc/" + strconv.Itoa(pid))
 	if err != nil {
 		return 0, false
 	}
@@ -247,7 +254,7 @@ func enrichOrphan(item *PortItem) {
 		item.Orphan = false
 		return
 	}
-	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	b, err := procFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
 		item.Orphan = false
 		return
