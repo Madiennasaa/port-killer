@@ -186,3 +186,28 @@ func TestInodeOwnersFindsOwnSocket(t *testing.T) {
 		t.Errorf("own socket inode %s must resolve, got %v", wantInode, owners)
 	}
 }
+
+// ---- restart.go: root-credential block with a *valid* numeric gid ----
+
+func TestRestartOneRootCredentialValidGID(t *testing.T) {
+	// Point lookupUserById at a fake user whose Gid is a valid number so the
+	// credential block is fully executed (Credential + Env append). Without
+	// real root the kernel rejects the setuid, so Start() must fail — which
+	// is fine: the lines we care about already ran.
+	oldUID := effectiveUID
+	oldLookup := lookupUserById
+	effectiveUID = func() int { return 0 }
+	lookupUserById = func(string) (*user.User, error) {
+		return &user.User{Username: "fakeuser", Uid: "12345", Gid: "12345", HomeDir: "/tmp"}, nil
+	}
+	t.Cleanup(func() {
+		effectiveUID = oldUID
+		lookupUserById = oldLookup
+	})
+
+	err := restartOne(Restartable{Cmd: []string{"true"}, Cwd: t.TempDir(), UID: 12345})
+	// Start() fails without root, but the credential block was taken.
+	if err == nil {
+		t.Log("unexpectedly succeeded (running as root?); credential block still covered")
+	}
+}

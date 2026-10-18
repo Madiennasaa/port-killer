@@ -107,13 +107,17 @@ func cliVersion() {
 	fmt.Printf("portkiller %s\n", version)
 }
 
+// exitProcess is os.Exit by default; tests replace it to observe exit paths
+// without killing the test binary.
+var exitProcess = os.Exit
+
 // rejectUnknownFlag exits 2 on a stray dash-flag; a bare non-flag argument
 // means the caller wanted the TUI, so report "not handled" instead.
 func rejectUnknownFlag(args []string) bool {
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") {
 			fmt.Fprintf(os.Stderr, "unknown flag %s (try --help)\n", a)
-			os.Exit(2)
+			exitProcess(2)
 		}
 	}
 	return false
@@ -142,7 +146,8 @@ func cliKill(args []string, force bool) {
 	port, forceFlag := killArgs(args)
 	if port == "" {
 		fmt.Fprintln(os.Stderr, "--kill needs a port number")
-		os.Exit(2)
+		exitProcess(2)
+		return
 	}
 	// runCLI already decided --force from the same args; keep that decision and
 	// note the disagreement so a future arg-parsing change cannot hide it.
@@ -153,10 +158,11 @@ func cliKill(args []string, force bool) {
 	n, failed := killLoop(port, force, GetActivePorts(), stopItem)
 	if n == 0 && !failed {
 		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", port)
-		os.Exit(1)
+		exitProcess(1)
+		return
 	}
 	if failed {
-		os.Exit(1)
+		exitProcess(1)
 	}
 }
 

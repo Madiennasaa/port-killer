@@ -1722,13 +1722,20 @@ func TestViewToggleKeyBusyGuardedBodies(t *testing.T) {
 	if nm := m.viewToggleKey("X"); nm.mode == modeConfirmOrphans {
 		t.Error("busy X must not arm the orphan dialog")
 	}
-	// The un-busy path calls the pointer-receiver askCleanOrphans, but
-	// viewToggleKey is a value receiver, so the armed mode is discarded on
-	// return. The body is still executed; assert it did not panic and that
-	// the caller's model is unchanged (the guard is what matters here).
+	// viewToggleKey is a value receiver, so both "P" and "X" arm on the
+	// temporary copy and the caller's model never changes. The bodies must
+	// still run without panicking; just assert the guard is what matters.
 	m.busy = false
 	if nm := m.viewToggleKey("X"); nm.mode == modeConfirmOrphans {
 		t.Error("X arms via askCleanOrphans, but the value receiver drops it")
+	}
+	m2 := testModel()
+	m2.view = m2.all
+	// Non-busy P: askStopProject runs on the temporary value. With the fixture
+	// it may arm modeConfirmProject on nm; the caller's model must stay normal.
+	_ = m2.viewToggleKey("P")
+	if m2.mode == modeConfirmProject {
+		t.Error("value receiver must not mutate the caller's model")
 	}
 }
 
@@ -1904,4 +1911,115 @@ func TestCLIListJSONHelper(t *testing.T) {
 		t.Skip("helper only")
 	}
 	cliList(true)
+}
+
+// ---- askStopProject early-return and group-skip branches ----
+
+func TestAskStopProjectEmptyView(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.view = nil
+	m.cursor = 0
+	m.askStopProject() // must return without indexing or panicking
+	if m.mode != modeNormal {
+		t.Errorf("mode = %v, want modeNormal", m.mode)
+	}
+}
+
+func TestAskStopProjectSkipsOtherGroup(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	// Two projects. The first sorted group (aaa) has no safe targets, so it is
+	// skipped via `continue`; the loop then falls through to the matching
+	// project (zzz), which enters its own branch and hits the "no safe
+	// targets" path (its only process is a service-uid pid).
+	m.all = []PortItem{
+		{Proto: "tcp", Port: "1", PID: "1", Process: "systemd", Project: "aaa"},
+		{Proto: "tcp", Port: "2", PID: "2", Process: "sshd", Project: "zzz"},
+	}
+	m.rebuild()
+	for i, it := range m.view {
+		if it.Project == "zzz" {
+			m.cursor = i
+			break
+		}
+	}
+	m.askStopProject()
+	if m.message != "Project zzz: no safe targets." {
+		t.Errorf("message = %q", m.message)
+	}
+}
+
+// ---- update: MouseMsg dispatch to handleMouse ----
+
+func TestUpdateMouseMsgDispatch(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.height = 24
+	// A press on the footer line: dispatch goes through handleMouse -> footerClick.
+	nm, _ := m.update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, Y: 23, X: 1})
+	if nm.(model).mode != modeFilter {
+		t.Errorf("MouseMsg must route to handleMouse; mode = %v", nm.(model).mode)
+	}
+}
+
+// ---- keys: handleMouse footer miss and restartKey nil-cmd path ----
+
+func TestHandleMouseFooterMiss(t *testing.T) {
+	m := testModel()
+	m.view = m.all
+	m.height = 24
+	// X past every footer key: footerClick misses, handleMouse returns m, nil.
+	nm, cmd := m.handleMouse(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, Y: 23, X: 10000})
+	if cmd != nil || nm.(model).mode != modeNormal {
+		t.Errorf("footer miss: cmd=%v mode=%v", cmd, nm.(model).mode)
+	}
+}
+
+func TestNormalKeyRestartNilCmd(t *testing.T) {
+	m := testModel()
+	m.busy = false
+	m.restarts = nil // empty stack: restartKey reports handled but yields no cmd
+	// Call restartKey directly: normalKey routes "R" to moveKey (end) first.
+	nm, cmd, ok := m.restartKey("R")
+	if !ok {
+		t.Fatal("restartKey must handle R")
+	}
+	if cmd != nil {
+		t.Fatal("empty restart stack must not issue a command")
+	}
+	if !containsAll(nm.message, "No recently stopped") {
+		t.Errorf("message = %q", nm.message)
+	}
+}
+
+// ---- reexecSudo: the sysExec success/failure seam ----
+
+func TestReexecSudoCallsSysExec(t *testing.T) {
+	oldExe, oldLook, oldExec := executable, lookPath, sysExec
+	var gotPath string
+	var gotArgs []string
+	executable = func() (string, error) { return "/bin/true", nil }
+	lookPath = func(string) (string, error) { return "/usr/bin/sudo", nil }
+	sysExec = func(path string, args []string, env []string) error {
+		gotPath, gotArgs = path, args
+		return nil // pretend exec succeeded (the real syscall.Exec never returns on success)
+	}
+	t.Cleanup(func() { executable, lookPath, sysExec = oldExe, oldLook, oldExec })
+	reexecSudo()
+	if gotPath != "/usr/bin/sudo" {
+		t.Errorf("exec path = %q", gotPath)
+	}
+	if len(gotArgs) < 3 || gotArgs[0] != "sudo" || gotArgs[1] != "-E" || gotArgs[2] != "/bin/true" {
+		t.Errorf("exec args = %v", gotArgs)
+	}
+}
+
+// ---- main(): the --help early-return (appRun handled, so main returns) ----
+
+func TestMainHelpFlagReturns(t *testing.T) {
+	oldArgs := os.Args
+	os.Args = []string{"portkiller", "--help"}
+	t.Cleanup(func() { os.Args = oldArgs })
+	main() // --help is handled by runCLI, so main must return without starting the TUI
 }

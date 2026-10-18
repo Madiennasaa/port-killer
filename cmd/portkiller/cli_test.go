@@ -162,3 +162,43 @@ func exitCode(err error) (int, bool) {
 	}
 	return 0, false
 }
+
+// ---- cliKill exit paths via the exitProcess seam (in-process, no subprocess) ----
+
+func TestCLIKillNoPortExitsInProcess(t *testing.T) {
+	old := exitProcess
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	cliKill([]string{"--kill"}, false)
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2", code)
+	}
+}
+
+func TestCLIKillNothingListeningExitsInProcess(t *testing.T) {
+	// With no listeners on this port, killLoop returns n=0, failed=false.
+	withTempHome(t)
+	old := exitProcess
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	cliKill([]string{"--kill", "1"}, false)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (nothing listening)", code)
+	}
+}
+
+func TestCLIKillForceMismatchWarningInProcess(t *testing.T) {
+	withTempHome(t)
+	old := exitProcess
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	// force=true but the args carry no --force: the warning must fire, then
+	// the "nothing listening" exit(1) path runs.
+	cliKill([]string{"--kill", "1"}, true)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+}

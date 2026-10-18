@@ -449,6 +449,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 var (
 	executable = os.Executable
 	lookPath   = exec.LookPath
+	sysExec    = syscall.Exec
 )
 
 // reexecSudo relaunches the current binary under sudo so every process is
@@ -462,7 +463,7 @@ func reexecSudo() {
 	if err != nil {
 		return
 	}
-	syscall.Exec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
+	sysExec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
 }
 
 // appRun is the non-TUI entry point. It returns handled=true when the args
