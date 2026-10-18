@@ -77,10 +77,16 @@ func countChildren(ppids map[int]int, pid int) int {
 	return n
 }
 
+// procDir and readProcFile are seams so the /proc race paths are testable.
+var (
+	procDir      = "/proc"
+	readProcFile = os.ReadFile
+)
+
 // readPPIDs reads the ppid of every process from /proc/<pid>/stat.
 func readPPIDs() map[int]int {
 	out := map[int]int{}
-	ents, err := os.ReadDir("/proc")
+	ents, err := os.ReadDir(procDir)
 	if err != nil {
 		return out
 	}
@@ -89,7 +95,7 @@ func readPPIDs() map[int]int {
 		if err != nil {
 			continue
 		}
-		b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
+		b, err := readProcFile(procDir + "/" + e.Name() + "/stat")
 		if err != nil {
 			continue
 		}
@@ -106,7 +112,7 @@ func inodeOwners(inodes map[string]bool) map[string]string {
 	if len(inodes) == 0 {
 		return out
 	}
-	ents, err := os.ReadDir("/proc")
+	ents, err := os.ReadDir(procDir)
 	if err != nil {
 		return out
 	}
@@ -114,7 +120,7 @@ func inodeOwners(inodes map[string]bool) map[string]string {
 		if _, err := strconv.Atoi(e.Name()); err != nil {
 			continue
 		}
-		fds, err := os.ReadDir("/proc/" + e.Name() + "/fd")
+		fds, err := os.ReadDir(procDir + "/" + e.Name() + "/fd")
 		if err != nil {
 			continue
 		}

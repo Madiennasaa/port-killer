@@ -62,6 +62,9 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 
 func refreshCmd() tea.Msg { return portsMsg(GetActivePorts()) }
 
+// checkHealth is a seam so healthCmd's recover path is testable.
+var checkHealth = CheckHealth
+
 func healthCmd(items []PortItem) tea.Cmd {
 	snap := make([]PortItem, len(items))
 	copy(snap, items)
@@ -71,7 +74,7 @@ func healthCmd(items []PortItem) tea.Cmd {
 				msg = healthResultMsg{results: map[string]healthResult{}, panicked: true}
 			}
 		}()
-		msg = healthResultMsg{results: CheckHealth(snap)}
+		msg = healthResultMsg{results: checkHealth(snap)}
 		return msg
 	}
 }

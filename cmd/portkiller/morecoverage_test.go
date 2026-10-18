@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -351,6 +353,49 @@ func TestCheckHealthUDPAndBadPort(t *testing.T) {
 
 // ---- cmds.go ----
 
+func TestComputeBlastHostConnsAndClients(t *testing.T) {
+	// A host item with a real listener: the inodeOwners + summarizeClients
+	// loops and the readPPIDs/children count all run.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	// A listen-only socket is state 0A (LISTEN); countEstablished only keeps
+	// state 01 (ESTABLISHED), so open a real client connection.
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+		}
+	}()
+	cc, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cc.Close()
+	_, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := ComputeBlast(PortItem{Port: portStr, PID: itoaSimple(os.Getpid())})
+	if b.Conns == 0 {
+		t.Error("a live listener must be counted")
+	}
+	if b.Children != 0 {
+		t.Errorf("test process has no children, got %d", b.Children)
+	}
+	// An unparseable port returns the zero Blast without touching /proc.
+	if b := ComputeBlast(PortItem{Port: "bukan"}); b.Conns != 0 || b.Clients != nil {
+		t.Errorf("bad port must short-circuit, got %+v", b)
+	}
+}
+
+// ---- cmds.go ----
+
 func TestKillOrphansSkipsDockerAndSignals(t *testing.T) {
 	items := []PortItem{
 		{Source: "docker", PID: "abc", Port: "80"}, // skipped
@@ -388,6 +433,46 @@ func TestKillProjectCmdSkipsSystemProcs(t *testing.T) {
 	}
 }
 
+func TestKillLoopPartialSuccess(t *testing.T) {
+	// One success + one failure: done=1 and failed=true, with the error kept.
+	// killLoop only processes items whose Port matches the requested port.
+	items := []PortItem{{Port: "80", PID: "1"}, {Port: "80", PID: "2"}}
+	n, failed := killLoop("80", false, items, func(it PortItem, _ bool) error {
+		if it.PID == "2" {
+			return errors.New("nope")
+		}
+		return nil
+	})
+	if n != 1 || !failed {
+		t.Errorf("n=%d failed=%v, want 1/true", n, failed)
+	}
+}
+
+func TestKillLoopAllFail(t *testing.T) {
+	// Every stop fails: the first error is kept, n=0, failed=true.
+	items := []PortItem{{Port: "80", PID: "1"}, {Port: "80", PID: "2"}}
+	n, failed := killLoop("80", true, items, func(PortItem, bool) error {
+		return errors.New("nope")
+	})
+	if n != 0 || !failed {
+		t.Errorf("n=%d failed=%v, want 0/true", n, failed)
+	}
+}
+
+func TestKillLoopForceReachesStop(t *testing.T) {
+	// force=true is threaded through to stop; a nil error is a clean pass.
+	n, failed := killLoop("80", true, []PortItem{{Port: "80"}},
+		func(_ PortItem, force bool) error {
+			if !force {
+				t.Error("force must be forwarded to stop")
+			}
+			return nil
+		})
+	if n != 1 || failed {
+		t.Errorf("n=%d failed=%v, want 1/false", n, failed)
+	}
+}
+
 // ---- proc.go: enrich* edge branches ----
 
 func TestEnrichProjectDockerAndBadPID(t *testing.T) {
@@ -406,6 +491,23 @@ func TestEnrichProjectDockerAndBadPID(t *testing.T) {
 	enrichProject(&it)
 	if it.Cwd == "-" {
 		t.Fatalf("self cwd must resolve, got %+v", it)
+	}
+	// A live process whose cwd vanished (deleted) falls back to "-".
+	old := readProcLink
+	readProcLink = func(string) (string, error) { return "/tmp/gone (deleted)", nil }
+	t.Cleanup(func() { readProcLink = old })
+	it = PortItem{Source: "host", Process: "x", PID: itoaSimple(os.Getpid())}
+	enrichProject(&it)
+	if it.Cwd != "-" || it.Project != "-" {
+		t.Fatalf("deleted cwd must fall back to \"-\", got %+v", it)
+	}
+	// An empty cwd is treated the same way.
+	readProcLink = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { readProcLink = old })
+	it = PortItem{Source: "host", Process: "x", PID: itoaSimple(os.Getpid())}
+	enrichProject(&it)
+	if it.Cwd != "-" || it.Project != "-" {
+		t.Fatalf("empty cwd must fall back to \"-\", got %+v", it)
 	}
 }
 
@@ -466,6 +568,69 @@ func TestParseStatErrorPaths(t *testing.T) {
 	// state + ppid + pgrp + session + tty_nr
 	if ppid, tty, err := parseStat([]byte("1 (x) S 0 0 0 0 0")); err != nil || ppid != 0 || tty != 0 {
 		t.Fatalf("ppid=%d tty=%d err=%v", ppid, tty, err)
+	}
+	// A non-numeric ppid (fields[1]) must surface the Atoi error.
+	if _, _, err := parseStat([]byte("1 (x) S A 0 0 0 0")); err == nil {
+		t.Error("non-numeric ppid must error")
+	}
+	// After the ')' the fields are state(0) ppid(1) pgrp(2) session(3)
+	// tty_nr(4) ... so we need at least five fields for the index check.
+	// "00x" is not a valid Atoi input, so the second error path fires.
+	if _, _, err := parseStat([]byte("1 (x) S 0 0 0 00x")); err == nil {
+		t.Error("non-numeric tty_nr must error")
+	}
+}
+
+// ---- reexecSudo early-return paths (seams: executable, lookPath) ----
+
+func TestReexecSudoExecutableError(t *testing.T) {
+	oldExe, oldLook := executable, lookPath
+	executable = func() (string, error) { return "", errors.New("no exe") }
+	lookPath = func(string) (string, error) { t.Fatal("LookPath must not run"); return "", nil }
+	t.Cleanup(func() { executable, lookPath = oldExe, oldLook })
+	reexecSudo() // must return without execing
+}
+
+func TestReexecSudoNoSudo(t *testing.T) {
+	oldExe, oldLook := executable, lookPath
+	executable = func() (string, error) { return "/bin/true", nil }
+	lookPath = func(string) (string, error) { return "", errors.New("no sudo") }
+	t.Cleanup(func() { executable, lookPath = oldExe, oldLook })
+	reexecSudo() // must return without execing
+}
+
+// ---- appRun: already-handled CLI and the root reexec skip ----
+
+func TestAppRunAlreadyHandled(t *testing.T) {
+	called := false
+	if !appRun([]string{"--version"}, 0, func([]string) bool { called = true; return true }, func() {
+		t.Fatal("reexec must not run when the CLI handled it")
+	}) {
+		t.Error("a handled CLI must report handled=true")
+	}
+	if !called {
+		t.Error("run must be invoked")
+	}
+}
+
+func TestAppRunRootSkipsReexec(t *testing.T) {
+	if !appRun([]string{"--version"}, 0, func([]string) bool { return true }, func() {
+		t.Fatal("euid 0 must not reexec")
+	}) {
+		t.Error("root with a handled CLI must report handled=true")
+	}
+}
+
+func TestAppRunReexecsNonRoot(t *testing.T) {
+	runs, reexecs := 0, 0
+	// "--list" needs root and our run "handles" it. appRun reexecs for a
+	// non-root euid and then returns, so the CLI is invoked once and the
+	// reexec hook exactly once.
+	if !appRun([]string{"--list"}, 1000, func([]string) bool { runs++; return true }, func() { reexecs++ }) {
+		t.Error("non-root must reexec")
+	}
+	if runs != 1 || reexecs != 1 {
+		t.Errorf("runs=%d reexecs=%d, want 1/1", runs, reexecs)
 	}
 }
 
@@ -602,6 +767,76 @@ func TestInodeOwnersEmpty(t *testing.T) {
 	}
 }
 
+func TestInodeOwnersProcDirError(t *testing.T) {
+	oldDir := procDir
+	procDir = "/no/such/proc-dir"
+	t.Cleanup(func() { procDir = oldDir })
+	if got := inodeOwners(map[string]bool{"1": true}); len(got) != 0 {
+		t.Errorf("unreadable /proc must yield an empty map, got %v", got)
+	}
+}
+
+func TestInodeOwnersSkipsBadEntries(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/12345", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 12345/fd is left missing -> the read error path is taken.
+	if err := os.MkdirAll(dir+"/self/fd", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/self/fd/3", []byte("not-a-symlink"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldDir := procDir
+	procDir = dir
+	t.Cleanup(func() { procDir = oldDir })
+	if got := inodeOwners(map[string]bool{"1": true}); len(got) != 0 {
+		t.Errorf("garbage fd must yield an empty map, got %v", got)
+	}
+}
+
+func TestComputeBlastDockerWithConns(t *testing.T) {
+	// A docker item whose port has a real ESTABLISHED connection: Conns is
+	// counted from /proc/net/tcp, but the client/children scan is skipped.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("cannot listen: %v", err)
+	}
+	defer ln.Close()
+	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
+
+	go func() {
+		c, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// Keep the connection open until the test finishes.
+		buf := make([]byte, 1)
+		_, _ = conn.Read(buf)
+	}()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Skipf("cannot dial: %v", err)
+	}
+	defer client.Close()
+
+	b := ComputeBlast(PortItem{Source: "docker", PID: "abc", Port: portStr})
+	if b.Conns == 0 {
+		t.Errorf("docker blast must count established conns, got %+v", b)
+	}
+	if b.Children != 0 || len(b.Clients) != 0 {
+		t.Errorf("docker blast must skip /proc owners: %+v", b)
+	}
+}
+
 func TestComputeBlastSelfChildren(t *testing.T) {
 	// Our own process is the "server": its children are counted from /proc.
 	// It has no listener on a random high port, so Conns is 0.
@@ -644,6 +879,33 @@ func TestRestartOneDockerMissingBinary(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "docker") {
 		t.Errorf("error = %v", err)
+	}
+}
+
+func TestRestartOneHostCommandStarts(t *testing.T) {
+	// A real host command with a valid cwd: Start succeeds, Wait is deferred.
+	if err := restartOne(Restartable{Cmd: []string{"true"}, Cwd: t.TempDir(), UID: os.Getuid()}); err != nil {
+		t.Fatalf("host restart: %v", err)
+	}
+}
+
+func TestCaptureRestartProcRace(t *testing.T) {
+	// The process vanished between the cmdline/cwd reads and the uid lookup.
+	old := readProcLink
+	readProcLink = func(string) (string, error) { return "", os.ErrNotExist }
+	t.Cleanup(func() { readProcLink = old })
+	if _, ok := captureRestart(PortItem{PID: itoaSimple(os.Getpid()), Process: "x"}); ok {
+		t.Error("vanished process must not be capturable")
+	}
+}
+
+func TestCaptureRestartDockerAndBadPID(t *testing.T) {
+	r, ok := captureRestart(PortItem{Source: "docker", Process: "docker:web", PID: "abc"})
+	if !ok || !r.Docker || r.Name != "web" || r.ID != "abc" {
+		t.Fatalf("docker: %+v ok=%v", r, ok)
+	}
+	if _, ok := captureRestart(PortItem{PID: "bukan", Process: "x"}); ok {
+		t.Error("non-numeric pid must not be capturable")
 	}
 }
 
@@ -882,7 +1144,88 @@ func TestStopItemDockerAndHost(t *testing.T) {
 	}
 }
 
-// ---- main.go: recordEvents unknown cause when the cause is stale ----
+// ---- blast.go: readPPIDs /proc race via the procDir and readProcFile seams ----
+
+func TestReadPPIDsProcDirError(t *testing.T) {
+	oldDir, oldRead := procDir, readProcFile
+	procDir = "/no/such/proc-dir"
+	t.Cleanup(func() { procDir, readProcFile = oldDir, oldRead })
+	if got := readPPIDs(); len(got) != 0 {
+		t.Errorf("unreadable /proc must yield an empty map, got %v", got)
+	}
+}
+
+func TestReadPPIDsSkipsBadEntries(t *testing.T) {
+	dir := t.TempDir()
+	// A non-numeric dir, an unreadable stat, and a stat that fails to parse.
+	if err := os.MkdirAll(dir+"/self", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/self/stat", []byte("garbage"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir+"/12345", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 12345/stat is left missing -> the read error path is taken.
+
+	oldDir, oldRead := procDir, readProcFile
+	procDir = dir
+	t.Cleanup(func() { procDir, readProcFile = oldDir, oldRead })
+	if got := readPPIDs(); len(got) != 0 {
+		t.Errorf("garbage/missing stat must yield an empty map, got %v", got)
+	}
+}
+
+// ---- main.go: update branches not yet reached ----
+
+func TestUpdateUnknownMsg(t *testing.T) {
+	m := testModel()
+	nm, cmd := m.update(struct{ x int }{})
+	if cmd != nil {
+		t.Error("unknown message must not schedule work")
+	}
+	if _, ok := nm.(model); !ok {
+		t.Error("update must return the model")
+	}
+}
+
+func TestCheckGuardNowRecordsEventOnce(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.guard = []Rule{{Port: "3000", Owner: "postgres"}}
+	m.all = []PortItem{{Proto: "tcp", Port: "3000", PID: "1", Process: "node"}}
+	m.checkGuardNow()
+	evs := readEvents(eventsPath(), 10)
+	if len(evs) != 1 {
+		t.Fatalf("first violation must be recorded once, got %d", len(evs))
+	}
+	// A second tick with the same violation must not add another event.
+	m.checkGuardNow()
+	if n := len(readEvents(eventsPath(), 10)); n != 1 {
+		t.Errorf("repeat violation must not re-log, got %d", n)
+	}
+}
+
+// ---- view.go: pid truncation and docker row style ----
+
+func TestViewPidTruncationAndStyles(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.view = []PortItem{
+		{Proto: "tcp", Addr: "0.0.0.0", Port: "1", PID: "123456789012", Process: "longpid", Source: "host"},
+		{Proto: "tcp", Addr: "0.0.0.0", Port: "2", PID: "abc", Process: "docker:web", Source: "docker"},
+		{Proto: "tcp", Addr: "0.0.0.0", Port: "3", PID: "2", Process: "sshd", Source: "host"},
+	}
+	if out := m.View(); !containsAll(out, "12345678", "docker:web", "sshd") {
+		t.Errorf("truncated pid / docker / system styles missing:\n%s", out)
+	}
+	// An empty view must show the "no matching ports" line.
+	m.view = nil
+	if out := m.View(); !containsAll(out, "No matching ports") {
+		t.Errorf("empty-view hint missing:\n%s", out)
+	}
+}
 
 func TestRecordEventsStaleCause(t *testing.T) {
 	withTempHome(t)
@@ -897,5 +1240,35 @@ func TestRecordEventsStaleCause(t *testing.T) {
 	}
 	if evs[0].Cause != "unknown" {
 		t.Errorf("stale cause must fall back to unknown, got %q", evs[0].Cause)
+	}
+}
+
+// ---- cmds.go: healthCmd recover path via the checkHealth seam ----
+
+func TestHealthCmdRecoversFromPanic(t *testing.T) {
+	old := checkHealth
+	checkHealth = func([]PortItem) map[string]healthResult { panic("boom") }
+	t.Cleanup(func() { checkHealth = old })
+
+	msg, ok := healthCmd(nil)().(healthResultMsg)
+	if !ok {
+		t.Fatalf("got %T", msg)
+	}
+	if !msg.panicked {
+		t.Error("a panicking check must be recovered")
+	}
+}
+
+// ---- proc.go: enrichProject /proc race via the readProcLink seam ----
+
+func TestEnrichProjectProcRace(t *testing.T) {
+	old := readProcLink
+	readProcLink = func(string) (string, error) { return "", os.ErrPermission }
+	t.Cleanup(func() { readProcLink = old })
+
+	it := PortItem{Source: "host", PID: itoaSimple(os.Getpid()), Process: "x"}
+	enrichProject(&it)
+	if it.Cwd != "-" || it.Project != "-" {
+		t.Fatalf("unreadable cwd must fall back to \"-\", got %+v", it)
 	}
 }

@@ -443,14 +443,22 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// executable and lookPath are seams so reexecSudo's early-return paths are
+// testable. They are only ever replaced in tests; production always uses the
+// real os/exec lookups.
+var (
+	executable = os.Executable
+	lookPath   = exec.LookPath
+)
+
 // reexecSudo relaunches the current binary under sudo so every process is
 // visible. It only returns when sudo is unavailable or the exec fails.
 func reexecSudo() {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return
 	}
-	sudo, err := exec.LookPath("sudo")
+	sudo, err := lookPath("sudo")
 	if err != nil {
 		return
 	}

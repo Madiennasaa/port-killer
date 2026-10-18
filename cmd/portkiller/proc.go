@@ -166,8 +166,11 @@ func normalizeProjectName(s string) string {
 	return s
 }
 
+// readProcLink is a seam so enrichProject's /proc race paths are testable.
+var readProcLink = os.Readlink
+
 func readCwd(pid int) (string, error) {
-	return os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
+	return readProcLink("/proc/" + strconv.Itoa(pid) + "/cwd")
 }
 
 // parseStat (pure): extracts ppid and tty_nr from /proc/<pid>/stat.

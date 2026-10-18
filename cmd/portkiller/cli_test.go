@@ -110,6 +110,48 @@ func TestRunCLIHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+// TestRunCLIListSuccess exercises cliList's two happy paths (plain and --json)
+// in a subprocess so the real stdout formatting is covered.
+func TestRunCLIListSuccess(t *testing.T) {
+	for _, args := range [][]string{{"--list"}, {"--list", "--json"}} {
+		cmd := exec.Command(os.Args[0], "-test.run=TestRunCLIHelperProcess", "--")
+		cmd.Env = append(os.Environ(), "PORTKILLER_CLI_HELPER=1",
+			"PORTKILLER_CLI_ARGS="+strings.Join(args, " "))
+		out, err := cmd.CombinedOutput()
+		exit, ok := exitCode(err)
+		if !ok {
+			t.Fatalf("args %v: helper did not exit: %v", args, err)
+		}
+		if exit != 0 {
+			t.Errorf("args %v: exit = %d, want 0\n%s", args, exit, out)
+		}
+	}
+}
+
+// TestCLIKillForceMismatch warns when cliKill's --force disagrees with the
+// flag runCLI already parsed. It runs in a subprocess so the exit path is safe.
+func TestCLIKillForceMismatch(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestCLIKillForceMismatchHelper", "--")
+	cmd.Env = append(os.Environ(), "PORTKILLER_CLI_KILL_MISMATCH=1")
+	out, err := cmd.CombinedOutput()
+	if _, ok := exitCode(err); !ok {
+		t.Fatalf("helper did not exit: %v", err)
+	}
+	if !strings.Contains(string(out), "warning: --force was given") {
+		t.Errorf("mismatch warning missing:\n%s", out)
+	}
+}
+
+func TestCLIKillForceMismatchHelper(t *testing.T) {
+	if os.Getenv("PORTKILLER_CLI_KILL_MISMATCH") != "1" {
+		t.Skip("helper process only")
+	}
+	// force=true, but the args carry no --force: the warning must fire, then
+	// the "nothing listening" exit(1) path runs.
+	cliKill([]string{"--kill", "1"}, true)
+	os.Exit(0)
+}
+
 func exitCode(err error) (int, bool) {
 	if err == nil {
 		return 0, true
