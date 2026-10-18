@@ -53,8 +53,11 @@ func footerItem(k, l string) string {
 	return keyStyle.Render(k) + labelStyle.Render(pad(l, len(l)))
 }
 
-func sysUptime() string {
-	b, err := os.ReadFile("/proc/uptime")
+func sysUptime() string { return sysUptimeFrom(mustReadFile("/proc/uptime")) }
+
+// sysUptimeFrom (pure): render an uptime string from /proc/uptime contents.
+// A missing or malformed value renders as "?" rather than a bogus 0d.
+func sysUptimeFrom(b []byte, err error) string {
 	if err != nil {
 		return "?"
 	}
@@ -69,6 +72,9 @@ func sysUptime() string {
 	t := int(s)
 	return fmt.Sprintf("%dd %02dh %02dm", t/86400, t%86400/3600, t%3600/60)
 }
+
+// mustReadFile is a tiny seam so sysUptime's parse path is testable.
+func mustReadFile(p string) ([]byte, error) { return os.ReadFile(p) }
 
 func healthText(it PortItem) string {
 	switch it.Health {

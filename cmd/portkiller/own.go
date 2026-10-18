@@ -15,17 +15,35 @@ func chownToSudoUser(paths ...string) {
 	if err != nil {
 		return
 	}
-	// user.Uid/Gid are always decimal strings on Unix; a parse failure means
-	// a broken NSS entry, and chowning to 0:0 would be worse than leaving it.
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
+	uid, gid, ok := chownIDs(u.Uid, u.Gid)
+	if !ok {
 		return
 	}
-	gid, err := strconv.Atoi(u.Gid)
+	chownPaths(paths, uid, gid)
+}
+
+// chownIDs (pure): parse a user's uid/gid strings. A parse failure means a
+// broken NSS entry, and chowning to 0:0 would be worse than leaving it.
+func chownIDs(uidStr, gidStr string) (uid, gid int, ok bool) {
+	uid, err := strconv.Atoi(uidStr)
 	if err != nil {
-		return
+		return 0, 0, false
 	}
+	gid, err = strconv.Atoi(gidStr)
+	if err != nil {
+		return 0, 0, false
+	}
+	return uid, gid, true
+}
+
+// chownPaths applies chown to each path; the result is aggregated so tests
+// can assert ownership without relying on a root process.
+func chownPaths(paths []string, uid, gid int) error {
+	var first error
 	for _, p := range paths {
-		os.Chown(p, uid, gid)
+		if err := os.Chown(p, uid, gid); err != nil && first == nil {
+			first = err
+		}
 	}
+	return first
 }

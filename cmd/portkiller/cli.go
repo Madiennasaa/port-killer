@@ -64,6 +64,40 @@ func runCLI(args []string) bool {
 	return true
 }
 
+// killArgs (pure): find the --kill target and whether --force was given.
+// A missing or flag-looking target yields port "".
+func killArgs(args []string) (port string, force bool) {
+	for i, a := range args {
+		if a == "--kill" && i+1 < len(args) {
+			c := args[i+1]
+			if c != "" && !strings.HasPrefix(c, "--") {
+				port = c
+			}
+		}
+	}
+	return port, hasFlag(args, "--force")
+}
+
+// killLoop runs stopItem over every listener on port, printing each result.
+// It returns how many were stopped and whether any failed.
+func killLoop(port string, force bool, items []PortItem, stop func(PortItem, bool) error) (n int, failed bool) {
+	seen := map[string]bool{}
+	for _, it := range items {
+		if it.Port != port || seen[it.PID] {
+			continue
+		}
+		seen[it.PID] = true
+		if err := stop(it, force); err != nil {
+			fmt.Fprintf(os.Stderr, "failed %s (PID %s): %v\n", it.Process, it.PID, err)
+			failed = true
+			continue
+		}
+		fmt.Printf("stopped %s (PID %s)\n", it.Process, it.PID)
+		n++
+	}
+	return n, failed
+}
+
 func cliHelp() {
 	fmt.Println("usage: portkiller [--list [--json]] [--kill PORT [--force]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
@@ -105,32 +139,13 @@ func cliList(asJSON bool) {
 // cliKill stops everything listening on port. Exit codes: 1 = nothing stopped
 // or at least one failure, 2 = bad --kill argument.
 func cliKill(args []string, force bool) {
-	port := ""
-	for i, a := range args {
-		if a == "--kill" && i+1 < len(args) {
-			port = args[i+1]
-		}
-	}
-	if port == "" || strings.HasPrefix(port, "--") {
+	port, _ := killArgs(args)
+	if port == "" {
 		fmt.Fprintln(os.Stderr, "--kill needs a port number")
 		os.Exit(2)
 	}
 
-	seen := map[string]bool{}
-	n, failed := 0, false
-	for _, it := range GetActivePorts() {
-		if it.Port != port || seen[it.PID] {
-			continue
-		}
-		seen[it.PID] = true
-		if err := stopItem(it, force); err != nil {
-			fmt.Fprintf(os.Stderr, "failed %s (PID %s): %v\n", it.Process, it.PID, err)
-			failed = true
-			continue
-		}
-		fmt.Printf("stopped %s (PID %s)\n", it.Process, it.PID)
-		n++
-	}
+	n, failed := killLoop(port, force, GetActivePorts(), stopItem)
 	if n == 0 && !failed {
 		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", port)
 		os.Exit(1)

@@ -65,11 +65,16 @@ func parseEnvPorts(data string) []string {
 	return out
 }
 
+// getwd is a seam so conflictDir's error path is testable.
+var getwd = os.Getwd
+
 // conflictDir is the directory whose compose/.env files we check: the working
 // directory, or "" when it cannot be determined (the report then lists
 // nothing declared, which is honest).
-func conflictDir() string {
-	wd, err := os.Getwd()
+func conflictDir() string { return conflictDirFrom(getwd()) }
+
+// conflictDirFrom (pure) picks the working directory or "" on error.
+func conflictDirFrom(wd string, err error) string {
 	if err != nil {
 		return ""
 	}

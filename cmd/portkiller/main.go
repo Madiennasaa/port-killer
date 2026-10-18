@@ -457,15 +457,20 @@ func reexecSudo() {
 	syscall.Exec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
 }
 
+// appRun is the non-TUI entry point. It returns handled=true when the args
+// were a CLI command (so the caller must not start the TUI).
+func appRun(args []string, euid int, run func([]string) bool, reexec func()) (handled bool) {
+	if !cliNeedsRoot(args) && run(args) {
+		return true
+	}
+	if euid != 0 {
+		reexec()
+	}
+	return run(args)
+}
+
 func main() {
-	// Help and version must work without a sudo prompt.
-	if !cliNeedsRoot(os.Args[1:]) && runCLI(os.Args[1:]) {
-		return
-	}
-	if os.Geteuid() != 0 {
-		reexecSudo()
-	}
-	if runCLI(os.Args[1:]) {
+	if appRun(os.Args[1:], os.Geteuid(), runCLI, reexecSudo) {
 		return
 	}
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())

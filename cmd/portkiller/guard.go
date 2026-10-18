@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 )
@@ -69,9 +68,10 @@ func guardKey(v Violation) string {
 // under sudo, else $HOME. On lookup failure it returns "" so callers can fall
 // back rather than silently reading /root or a bogus path.
 func homeDir() string {
-	if su := os.Getenv("SUDO_USER"); su != "" {
-		if u, err := user.Lookup(su); err == nil && u.HomeDir != "" {
-			return u.HomeDir
+	su := os.Getenv("SUDO_USER")
+	if su != "" {
+		if h, ok := lookupHomeForUid("", su, homeByUID, homeByName); ok {
+			return h
 		}
 	}
 	home, err := os.UserHomeDir()
