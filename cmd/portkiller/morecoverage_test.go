@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -872,7 +873,9 @@ func TestReadPPIDsRealProcesses(t *testing.T) {
 // ---- restart.go ----
 
 func TestRestartOneDockerMissingBinary(t *testing.T) {
-	// No docker binary: the start must fail (docker error path).
+	// An empty PATH guarantees no docker binary, on any machine (CI runners
+	// ship docker, so the old "assume it is missing" test was host-dependent).
+	t.Setenv("PATH", t.TempDir())
 	err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"})
 	if err == nil {
 		t.Fatal("docker start without a docker binary must error")
@@ -1386,9 +1389,26 @@ func TestParseStatTTYNrAtoiError(t *testing.T) {
 // ---- proc.go: enrichOrphan uid-vanished conservative path ----
 
 func TestEnrichOrphanUIDVanished(t *testing.T) {
-	// A pid that survives the /proc/<pid>/stat read but whose uid lookup fails
-	// is judged with uid 0. With a real tty the process is never an orphan, so
-	// this asserts the "uid vanished" path is taken without panicking.
+	// The /proc/<pid>/stat read succeeds but the uid lookup loses the race
+	// (the pid is gone by then). enrichOrphan must fall back to uid 0, which
+	// keeps the orphan check conservative instead of aborting.
+	oldProc, oldStat := procFile, statProc
+	procFile = func(string) ([]byte, error) {
+		return []byte("4242 (app) S 1 1 1 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0"), nil
+	}
+	statProc = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+	t.Cleanup(func() { procFile, statProc = oldProc, oldStat })
+	it := PortItem{Source: "host", PID: "4242", Process: "app", Proto: "tcp", Project: "demo"}
+	enrichOrphan(&it)
+	// ppid 1 + no tty + project + uid 0 (not a system uid) -> orphan candidate.
+	if !it.Orphan {
+		t.Error("uid-vanished pid must be judged with uid 0, not skipped")
+	}
+}
+
+func TestEnrichOrphanLiveProcessHasTTY(t *testing.T) {
+	// A tty-attached process is never an orphan, even when its uid lookup
+	// races; this pins the isOrphan side of the same path.
 	it := PortItem{Source: "host", PID: itoaSimple(os.Getpid()), Process: "x", Proto: "tcp", Project: "app"}
 	enrichOrphan(&it)
 	if it.Orphan {
@@ -1485,6 +1505,22 @@ func TestNormalKeyQuitAndRefresh(t *testing.T) {
 	}
 	if _, cmd := m.normalKey("f5"); cmd == nil {
 		t.Error("f5 must refresh")
+	}
+}
+
+func TestNormalKeyRestartReturnsCmd(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.view = m.all
+	// A recorded restartable makes restartKey hand a command back, which is
+	// the one normalKey branch that returns early instead of falling through.
+	m.restarts = []Restartable{{Name: "web", Cmd: []string{"true"}, Cwd: t.TempDir()}}
+	nm, cmd := m.normalKey("R")
+	if cmd == nil {
+		t.Fatal("R with a pending restart must return a command")
+	}
+	if !nm.(model).busy {
+		t.Error("restart must mark the model busy")
 	}
 }
 
@@ -2022,4 +2058,74 @@ func TestMainHelpFlagReturns(t *testing.T) {
 	os.Args = []string{"portkiller", "--help"}
 	t.Cleanup(func() { os.Args = oldArgs })
 	main() // --help is handled by runCLI, so main must return without starting the TUI
+}
+
+// ---- main(): the interactive path, via the getEUID/runProgram seams ----
+
+// stubMainEnv pins os.Args/euid and captures the exit code for a main() test,
+// so the TUI path is reached without a sudo re-exec or a real terminal.
+func stubMainEnv(t *testing.T, args ...string) *int {
+	t.Helper()
+	oldArgs, oldEUID := os.Args, getEUID
+	oldRun, oldExit := runProgram, exitProcess
+	t.Cleanup(func() { os.Args, getEUID, runProgram, exitProcess = oldArgs, oldEUID, oldRun, oldExit })
+	os.Args = append([]string{"portkiller"}, args...)
+	getEUID = func() int { return 0 }
+	var code int
+	exitProcess = func(c int) { code = c }
+	return &code
+}
+
+func TestMainTUIErrorExitsOne(t *testing.T) {
+	code := stubMainEnv(t) // no flag: appRun reports "not handled"
+	runProgram = func(*tea.Program) error { return errors.New("boom") }
+	main()
+	if *code != 1 {
+		t.Errorf("exit code = %d, want 1", *code)
+	}
+}
+
+func TestMainTUISuccessReturns(t *testing.T) {
+	code := stubMainEnv(t)
+	runProgram = func(*tea.Program) error { return nil }
+	main()
+	if *code != 0 {
+		t.Errorf("exit code = %d, want 0 (clean TUI exit)", *code)
+	}
+}
+
+// ---- main.go: the default runProgram really runs the program ----
+
+// quitOnKey is a minimal Bubble Tea model that quits on the first key, so the
+// real runProgram can be exercised without a terminal.
+type quitOnKey struct{}
+
+func (quitOnKey) Init() tea.Cmd { return nil }
+
+func (quitOnKey) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(tea.KeyMsg); ok {
+		return quitOnKey{}, tea.Quit
+	}
+	return quitOnKey{}, nil
+}
+
+func (quitOnKey) View() string { return "" }
+
+func TestRunProgramQuitsCleanly(t *testing.T) {
+	// String-reader input and no renderer: "q" arrives as a key, the model
+	// quits, and Run returns nil -- proving runProgram forwards the error.
+	p := tea.NewProgram(quitOnKey{},
+		tea.WithInput(strings.NewReader("q")),
+		tea.WithOutput(io.Discard),
+		tea.WithoutRenderer())
+	done := make(chan error, 1)
+	go func() { done <- runProgram(p) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runProgram: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runProgram must return once the program quits")
+	}
 }

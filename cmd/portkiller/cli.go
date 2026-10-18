@@ -111,6 +111,13 @@ func cliVersion() {
 // without killing the test binary.
 var exitProcess = os.Exit
 
+// activePorts and marshalPorts are seams so the --list/--kill paths are
+// testable without depending on the host's listeners or on marshalling.
+var (
+	activePorts  = GetActivePorts
+	marshalPorts = json.MarshalIndent
+)
+
 // rejectUnknownFlag exits 2 on a stray dash-flag; a bare non-flag argument
 // means the caller wanted the TUI, so report "not handled" instead.
 func rejectUnknownFlag(args []string) bool {
@@ -124,13 +131,13 @@ func rejectUnknownFlag(args []string) bool {
 }
 
 func cliList(asJSON bool) {
-	items := GetActivePorts()
+	items := activePorts()
 	if asJSON {
-		b, err := json.MarshalIndent(items, "", "  ")
+		b, err := marshalPorts(items, "", "  ")
 		if err != nil {
 			// PortItem is plain strings and ints: marshalling cannot fail.
 			fmt.Fprintln(os.Stderr, "encoding ports failed:", err)
-			os.Exit(1)
+			exitProcess(1)
 		}
 		fmt.Println(string(b))
 		return
@@ -155,7 +162,7 @@ func cliKill(args []string, force bool) {
 		fmt.Fprintln(os.Stderr, "warning: --force was given but cliKill was called without it")
 	}
 
-	n, failed := killLoop(port, force, GetActivePorts(), stopItem)
+	n, failed := killLoop(port, force, activePorts(), stopItem)
 	if n == 0 && !failed {
 		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", port)
 		exitProcess(1)

@@ -17,5 +17,7 @@ jobs:
         run: test -z "$(gofmt -l ./cmd)"
       - name: Vet & test
         run: make test
+      - name: Coverage gate (100%)
+        run: make cover-gate
       - name: Build
         run: make build

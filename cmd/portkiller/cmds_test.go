@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -168,6 +169,16 @@ func TestRefreshCmd(t *testing.T) {
 func TestTickCmdNotNil(t *testing.T) {
 	if tickCmd() == nil {
 		t.Error("tickCmd must return a command")
+	}
+}
+
+func TestTickMsgAtWrapsTimestamp(t *testing.T) {
+	// The tick callback is a named function so its body is covered without
+	// waiting out the real 2s tick.
+	ts := time.Unix(1700000000, 0)
+	got := tickMsgAt(ts).(tickMsg)
+	if !time.Time(got).Equal(ts) {
+		t.Errorf("tickMsgAt(%v) = %v, want the same instant", ts, time.Time(got))
 	}
 }
 

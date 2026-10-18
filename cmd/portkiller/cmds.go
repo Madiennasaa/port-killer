@@ -79,8 +79,12 @@ func healthCmd(items []PortItem) tea.Cmd {
 	}
 }
 
+// tickMsgAt wraps a tick timestamp in a msg; a named function (not a closure)
+// so the callback is testable without waiting out the real 2s tick.
+func tickMsgAt(t time.Time) tea.Msg { return tickMsg(t) }
+
 func tickCmd() tea.Cmd {
-	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(2*time.Second, tickMsgAt)
 }
 
 func killCmd(item PortItem, force bool) tea.Cmd {

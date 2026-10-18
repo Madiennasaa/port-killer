@@ -478,13 +478,24 @@ func appRun(args []string, euid int, run func([]string) bool, reexec func()) (ha
 	return run(args)
 }
 
+// getEUID and runProgram are seams so main's TUI path is testable in-process:
+// tests pin euid to 0 (no sudo re-exec) and replace p.Run (no terminal).
+// Building the program itself is side-effect free, so main stays honest.
+var (
+	getEUID    = os.Geteuid
+	runProgram = func(p *tea.Program) error {
+		_, err := p.Run()
+		return err
+	}
+)
+
 func main() {
-	if appRun(os.Args[1:], os.Geteuid(), runCLI, reexecSudo) {
+	if appRun(os.Args[1:], getEUID(), runCLI, reexecSudo) {
 		return
 	}
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
-	if _, err := p.Run(); err != nil {
+	if err := runProgram(p); err != nil {
 		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		exitProcess(1)
 	}
 }

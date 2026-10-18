@@ -28,7 +28,9 @@ type PortItem struct {
 func (p PortItem) IsDocker() bool { return p.Source == "docker" }
 
 func GetActivePorts() []PortItem {
-	var items []PortItem
+	// Non-nil from the start: --list --json must print "[]" (not "null") when
+	// nothing is listening, and callers treat the result as always present.
+	items := []PortItem{}
 
 	cmd := exec.Command("ss", "-tulnp")
 	var out bytes.Buffer

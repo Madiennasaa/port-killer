@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -165,7 +166,17 @@ func exitCode(err error) (int, bool) {
 
 // ---- cliKill exit paths via the exitProcess seam (in-process, no subprocess) ----
 
+// stubActivePorts pins the activePorts seam for a CLI test so the result does
+// not depend on what the host machine happens to be listening on.
+func stubActivePorts(t *testing.T, items []PortItem) {
+	t.Helper()
+	old := activePorts
+	activePorts = func() []PortItem { return items }
+	t.Cleanup(func() { activePorts = old })
+}
+
 func TestCLIKillNoPortExitsInProcess(t *testing.T) {
+	stubActivePorts(t, nil)
 	old := exitProcess
 	var code int
 	exitProcess = func(c int) { code = c }
@@ -178,7 +189,7 @@ func TestCLIKillNoPortExitsInProcess(t *testing.T) {
 
 func TestCLIKillNothingListeningExitsInProcess(t *testing.T) {
 	// With no listeners on this port, killLoop returns n=0, failed=false.
-	withTempHome(t)
+	stubActivePorts(t, nil)
 	old := exitProcess
 	var code int
 	exitProcess = func(c int) { code = c }
@@ -190,7 +201,7 @@ func TestCLIKillNothingListeningExitsInProcess(t *testing.T) {
 }
 
 func TestCLIKillForceMismatchWarningInProcess(t *testing.T) {
-	withTempHome(t)
+	stubActivePorts(t, nil)
 	old := exitProcess
 	var code int
 	exitProcess = func(c int) { code = c }
@@ -200,5 +211,63 @@ func TestCLIKillForceMismatchWarningInProcess(t *testing.T) {
 	cliKill([]string{"--kill", "1"}, true)
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
+	}
+}
+
+func TestCLIKillPartialFailureExitsInProcess(t *testing.T) {
+	// A listener whose stop fails (a non-numeric PID never matches a real
+	// process) drives killLoop's failed flag, so cliKill exits 1.
+	stubActivePorts(t, []PortItem{{Port: "1", PID: "bogus", Process: "ghost"}})
+	old := exitProcess
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	cliKill([]string{"--kill", "1"}, false)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (stop failed)", code)
+	}
+}
+
+func TestCLIListJSONMarshalErrorExits(t *testing.T) {
+	// The marshal seam fails, so cliList must report it and exit 1.
+	stubActivePorts(t, nil)
+	oldMarshal, oldExit := marshalPorts, exitProcess
+	marshalPorts = func(any, string, string) ([]byte, error) { return nil, errors.New("boom") }
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { marshalPorts, exitProcess = oldMarshal, oldExit })
+	cliList(true)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (marshal failed)", code)
+	}
+}
+
+// captureStdout runs fn with os.Stdout redirected and returns what it printed.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	return <-done
+}
+
+func TestCLIListJSONEmptyIsArray(t *testing.T) {
+	// No listeners: --json must still print a JSON array, never "null".
+	stubActivePorts(t, []PortItem{})
+	out := captureStdout(t, func() { cliList(true) })
+	if strings.TrimSpace(out) != "[]" {
+		t.Errorf("json = %q, want []", strings.TrimSpace(out))
 	}
 }
