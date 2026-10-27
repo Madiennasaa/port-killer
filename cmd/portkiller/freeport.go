@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -36,25 +35,38 @@ func freeArgs(args []string) (string, bool) {
 	return "", false
 }
 
+// parsePort (pure) accepts one port from 1..65535.
+func parsePort(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("bad port %q", s)
+	}
+	if n < 1 || n > 65535 {
+		return 0, fmt.Errorf("port %d out of range (1..65535)", n)
+	}
+	return n, nil
+}
+
 // parsePortRange (pure) accepts "N" or "START-END" inside 1..65535.
 func parsePortRange(spec string) (start, end int, err error) {
 	lo, hi, hasRange := strings.Cut(spec, "-")
 	if lo == "" || (hasRange && hi == "") {
 		return 0, 0, errors.New("empty port range")
 	}
-	start, err = strconv.Atoi(lo)
+	start, err = parsePort(lo)
 	if err != nil {
-		return 0, 0, fmt.Errorf("bad start port %q", lo)
+		return 0, 0, err
 	}
 	end = start
-	if hasRange {
-		end, err = strconv.Atoi(hi)
-		if err != nil {
-			return 0, 0, fmt.Errorf("bad end port %q", hi)
-		}
+	if !hasRange {
+		return start, end, nil
 	}
-	if start < 1 || end > 65535 || start > end {
-		return 0, 0, errors.New("range must satisfy 1 <= start <= end <= 65535")
+	end, err = parsePort(hi)
+	if err != nil {
+		return 0, 0, err
+	}
+	if start > end {
+		return 0, 0, fmt.Errorf("range start %d is after end %d", start, end)
 	}
 	return start, end, nil
 }
@@ -91,10 +103,7 @@ func cliFree(args []string, asJSON bool) {
 		return
 	}
 	if asJSON {
-		b, _ := json.Marshal(struct {
-			Port int `json:"port"`
-		}{port})
-		fmt.Println(string(b))
+		fmt.Printf("{\"port\":%d}\n", port)
 		return
 	}
 	fmt.Println(port)

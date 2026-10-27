@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,6 +160,7 @@ func TestCLIHistoryExits(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"--history", "--limit", "0"},
+		{"--history", "--limit", "70000"},
 		{"--history", "--limit", "x"},
 		{"--history", "--limit"},
 		{"--history", "--port", "0"},
@@ -176,6 +178,43 @@ func TestCLIHistoryExits(t *testing.T) {
 	captureStdout(t, func() { cliHistory([]string{"--history"}, false) })
 	if code != 0 {
 		t.Errorf("empty history must exit 0, got %d", code)
+	}
+}
+
+func TestHistoryFilters(t *testing.T) {
+	cases := []struct {
+		args  []string
+		port  string
+		limit int
+		ok    bool
+	}{
+		{[]string{"--history"}, "", 20, true},
+		{[]string{"--history", "--port", "3000", "--limit", "5"}, "3000", 5, true},
+		{[]string{"--history", "--limit", "0"}, "", 0, false},
+		{[]string{"--history", "--limit", "70000"}, "", 0, false},
+		{[]string{"--history", "--limit", "x"}, "", 0, false},
+		{[]string{"--history", "--port", "0"}, "", 0, false},
+		{[]string{"--history", "--port", "70000"}, "", 0, false},
+	}
+	for _, c := range cases {
+		port, limit, err := historyFilters(c.args)
+		if (err == nil) != c.ok || port != c.port || limit != c.limit {
+			t.Errorf("historyFilters(%v) = %q,%d,%v; want %q,%d,ok=%v", c.args, port, limit, err, c.port, c.limit, c.ok)
+		}
+	}
+}
+
+func TestCLIHistoryMarshalErrorExits(t *testing.T) {
+	withTempHome(t)
+	oldMarshal, oldExit := marshalHistory, exitProcess
+	marshalHistory = func(any) ([]byte, error) { return nil, errors.New("boom") }
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { marshalHistory, exitProcess = oldMarshal, oldExit })
+
+	captureStdout(t, func() { cliHistory([]string{"--history", "--json"}, true) })
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
 	}
 }
 

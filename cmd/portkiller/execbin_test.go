@@ -14,7 +14,13 @@ func writeExecFile(t *testing.T, path string, mode os.FileMode) {
 	}
 }
 
-func TestFindInPath(t *testing.T) {
+type findInPathFixture struct {
+	dir string
+	bin string
+}
+
+func newFindInPathFixture(t *testing.T) findInPathFixture {
+	t.Helper()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "tool")
 	writeExecFile(t, bin, 0o755)
@@ -22,27 +28,33 @@ func TestFindInPath(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "adir"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	return findInPathFixture{dir: dir, bin: bin}
+}
 
-	got, err := findInPath("tool", dir)
-	if err != nil || got != bin {
-		t.Errorf("findInPath(tool) = %q, %v; want %q", got, err, bin)
-	}
-	if _, err := findInPath("noexec", dir); err == nil {
-		t.Error("non-executable file must not be treated as a binary")
-	}
-	if _, err := findInPath("adir", dir); err == nil {
-		t.Error("a directory must not be treated as a binary")
-	}
-	if _, err := findInPath("missing", dir); err == nil {
-		t.Error("missing binary must return an error")
+func TestFindInPathFindsExecutable(t *testing.T) {
+	f := newFindInPathFixture(t)
+	got, err := findInPath("tool", f.dir)
+	if err != nil || got != f.bin {
+		t.Errorf("findInPath(tool) = %q, %v; want %q", got, err, f.bin)
 	}
 	// Empty PATH entries are skipped, not treated as the cwd.
-	got, err = findInPath("tool", string(os.PathListSeparator)+dir)
-	if err != nil || got != bin {
+	got, err = findInPath("tool", string(os.PathListSeparator)+f.dir)
+	if err != nil || got != f.bin {
 		t.Errorf("findInPath with empty entry = %q, %v", got, err)
 	}
-	// A name with a separator is returned untouched.
-	if got, err := findInPath("/bin/sh", dir); err != nil || got != "/bin/sh" {
+}
+
+func TestFindInPathRejectsNonBinaries(t *testing.T) {
+	f := newFindInPathFixture(t)
+	for _, name := range []string{"noexec", "adir", "missing"} {
+		if _, err := findInPath(name, f.dir); err == nil {
+			t.Errorf("findInPath(%q) must fail", name)
+		}
+	}
+}
+
+func TestFindInPathKeepsExplicitPath(t *testing.T) {
+	if got, err := findInPath("/bin/sh", t.TempDir()); err != nil || got != "/bin/sh" {
 		t.Errorf("absolute name = %q, %v", got, err)
 	}
 }

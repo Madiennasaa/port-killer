@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -79,29 +80,52 @@ func intFlag(args []string, name string, def int) (int, error) {
 	return n, nil
 }
 
+// historyFilters validates --port/--limit and returns the filter to apply.
+func historyFilters(args []string) (port string, limit int, err error) {
+	limit, err = intFlag(args, "--limit", 20)
+	if err != nil {
+		return "", 0, err
+	}
+	if limit < 1 || limit > maxEvents {
+		return "", 0, fmt.Errorf("--limit must be 1..%d", maxEvents)
+	}
+	if !hasFlag(args, "--port") {
+		return "", limit, nil
+	}
+	n, err := intFlag(args, "--port", 0)
+	if err != nil {
+		return "", 0, err
+	}
+	if n < 1 || n > 65535 {
+		return "", 0, errors.New("--port must be 1..65535")
+	}
+	return strconv.Itoa(n), limit, nil
+}
+
+// marshalHistory is a seam so the (practically unreachable) encoding failure
+// is testable, matching cliList's marshalPorts.
+var marshalHistory = func(v any) ([]byte, error) {
+	return json.MarshalIndent(v, "", "  ")
+}
+
 // cliHistory prints recent appear/vanished events, newest first. Exit codes:
-// 2 = bad flag value; an empty history is not an error.
+// 2 = bad flag value; 1 = encoding failure; an empty history is not an error.
 func cliHistory(args []string, asJSON bool) {
-	limit, err := intFlag(args, "--limit", 20)
-	if err != nil || limit < 1 || limit > maxEvents {
-		fmt.Fprintf(os.Stderr, "invalid --limit: %v (1..%d)\n", err, maxEvents)
+	port, limit, err := historyFilters(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid history filter:", err)
 		exitProcess(2)
 		return
-	}
-	port := ""
-	if hasFlag(args, "--port") {
-		n, err := intFlag(args, "--port", 0)
-		if err != nil || n < 1 || n > 65535 {
-			fmt.Fprintf(os.Stderr, "invalid --port: %v (1..65535)\n", err)
-			exitProcess(2)
-			return
-		}
-		port = strconv.Itoa(n)
 	}
 
 	evs := historyEvents(loadEvents(eventsPath()), port, limit)
 	if asJSON {
-		b, _ := json.MarshalIndent(evs, "", "  ")
+		b, err := marshalHistory(evs)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "encoding history failed:", err)
+			exitProcess(1)
+			return
+		}
 		fmt.Println(string(b))
 		return
 	}
