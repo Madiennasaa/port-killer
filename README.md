@@ -77,8 +77,24 @@ MIT
     portkiller --version         # version stamp
     portkiller --list            # table output
     portkiller --list --json     # machine-readable
-    portkiller --kill 8765       # SIGTERM / docker stop everything on that port
+    portkiller --kill 8765       # SIGTERM, then SIGKILL after 3s; docker/systemd aware
     portkiller --kill 8765 --force
+    portkiller --free 3000-3010  # first bindable port in the range
+    portkiller --free 3000-3010 --json
+    portkiller --history         # recent appear/vanished events, newest first
+    portkiller --history --port 3000 --limit 50
+    portkiller --history --json
+
+Host processes are stopped with SIGTERM and get 3 seconds to exit before
+SIGKILL. A process is only signalled when its PID still belongs to the same
+start time captured during the scan, and a systemd system service is stopped
+or restarted through `systemctl` instead of signalling its PID.
+
+Restarted processes keep their original environment, are launched from
+`/proc/<pid>/exe`, and write stdout/stderr to
+`~/.local/state/portkiller/restart-<name>.log`.
 
 Unknown flags exit with status 2 instead of silently starting the TUI.
-`--help` and `--version` run without a sudo prompt.
+`--help`, `--version`, `--free` and `--history` run without a sudo prompt.
+`--free` checks TCP bindability, so ranges below 1024 need root (`sudo
+portkiller --free 80-90`).

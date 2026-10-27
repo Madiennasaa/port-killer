@@ -95,7 +95,11 @@ type model struct {
 
 func initialModel() model {
 	m := model{width: 80, height: 24, health: map[string]healthResult{}}
-	m.all = GetActivePorts()
+	items, err := scanPorts()
+	if err != nil {
+		m.message, m.isErr, m.msgAt = "scan: "+err.Error(), true, time.Now()
+	}
+	m.all = items
 	m.guard = loadGuard()
 	m.guardSeen = map[string]bool{}
 	m.checkGuardNow()
@@ -373,8 +377,14 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(refreshCmd, tickCmd())
 
 	case portsMsg:
-		m.recordEvents([]PortItem(msg))
-		m.all = []PortItem(msg)
+		if msg.Err != nil {
+			// Keep the last good snapshot: a partial scan would record false
+			// "vanished" events and prune valid health results.
+			m.message, m.isErr, m.msgAt = "scan: "+msg.Err.Error(), true, time.Now()
+			return m, nil
+		}
+		m.recordEvents(msg.Items)
+		m.all = msg.Items
 		m.checkGuardNow()
 		m.pruneStaleHealth()
 		m.applyHealth()

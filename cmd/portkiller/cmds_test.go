@@ -161,7 +161,7 @@ func TestHealthCmdNoPanic(t *testing.T) {
 
 func TestRefreshCmd(t *testing.T) {
 	msg := refreshCmd().(portsMsg)
-	if msg == nil {
+	if msg.Items == nil {
 		t.Fatal("refreshCmd returned nil ports")
 	}
 }

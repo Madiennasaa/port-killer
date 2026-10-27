@@ -10,7 +10,10 @@ type tickMsg time.Time
 
 const messageTTL = 10 * time.Second
 
-type portsMsg []PortItem
+type portsMsg struct {
+	Items []PortItem
+	Err   error
+}
 
 const msgHealthPanic = "Health check panicked, skipped this cycle."
 
@@ -60,7 +63,10 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 	}
 }
 
-func refreshCmd() tea.Msg { return portsMsg(GetActivePorts()) }
+func refreshCmd() tea.Msg {
+	items, err := scanPorts()
+	return portsMsg{Items: items, Err: err}
+}
 
 // checkHealth is a seam so healthCmd's recover path is testable.
 var checkHealth = CheckHealth
@@ -104,7 +110,7 @@ func killOrphansCmd(items []PortItem) tea.Cmd {
 			if it.IsDocker() {
 				continue
 			}
-			if err := KillProcess(it.PID, false); err == nil {
+			if err := stopItem(it, false); err == nil {
 				done++
 			} else if firstErr == nil {
 				firstErr = err

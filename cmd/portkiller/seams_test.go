@@ -115,14 +115,23 @@ func TestRestartOneRootCredentialSuccess(t *testing.T) {
 
 // ---- scanner.go: fake docker that succeeds ----
 
+// stubDockerBin points the docker binary seam at path for the test duration.
+func stubDockerBin(t *testing.T, path string) {
+	t.Helper()
+	old := dockerBin
+	dockerBin = path
+	t.Cleanup(func() { dockerBin = old })
+}
+
 func withFakeDockerOK(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	sh := "#!/bin/sh\necho ok\nexit 0\n"
-	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(sh), 0o755); err != nil {
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte(sh), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubDockerBin(t, path)
 }
 
 func TestStopContainerFakeSuccess(t *testing.T) {
@@ -143,10 +152,11 @@ func TestGetDockerPortsFakeSuccess(t *testing.T) {
 	// Override docker ps with a canned format response.
 	dir := t.TempDir()
 	sh := "#!/bin/sh\necho 'abc|web|0.0.0.0:8080->80/tcp|Up 2 hours'\n"
-	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(sh), 0o755); err != nil {
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte(sh), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubDockerBin(t, path)
 
 	got := GetDockerPorts()
 	if len(got) != 1 || got[0].Port != "8080" || got[0].Process != "docker:web" {

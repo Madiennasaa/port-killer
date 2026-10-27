@@ -92,17 +92,7 @@ func appendEvents(path string, evs []Event) {
 
 // readEvents: n terakhir, terbaru dulu.
 func readEvents(path string, n int) []Event {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var all []Event
-	for _, l := range strings.Split(string(b), "\n") {
-		var e Event
-		if json.Unmarshal([]byte(l), &e) == nil && e.Kind != "" {
-			all = append(all, e)
-		}
-	}
+	all := loadEvents(path)
 	var out []Event
 	for i := len(all) - 1; i >= 0 && len(out) < n; i-- {
 		out = append(out, all[i])

@@ -723,14 +723,16 @@ func TestReadNeedsAndParsers(t *testing.T) {
 // ---- scanner.go ----
 
 func TestGetDockerPortsNoDockerBinary(t *testing.T) {
-	// No docker on PATH (or not running): must return nil, not panic.
+	// A missing docker binary must yield nil, not panic.
+	stubDockerBin(t, filepath.Join(t.TempDir(), "docker"))
 	if got := GetDockerPorts(); got != nil {
 		t.Fatalf("want nil, got %v", got)
 	}
 }
 
 func TestStopContainerError(t *testing.T) {
-	// No docker binary: CombinedOutput fails, and the error must be wrapped.
+	// A missing docker binary fails and the error must be wrapped.
+	stubDockerBin(t, filepath.Join(t.TempDir(), "docker"))
 	if err := StopContainer("abc"); err == nil {
 		t.Error("missing docker must error")
 	}
@@ -873,9 +875,9 @@ func TestReadPPIDsRealProcesses(t *testing.T) {
 // ---- restart.go ----
 
 func TestRestartOneDockerMissingBinary(t *testing.T) {
-	// An empty PATH guarantees no docker binary, on any machine (CI runners
-	// ship docker, so the old "assume it is missing" test was host-dependent).
-	t.Setenv("PATH", t.TempDir())
+	// A non-existent binary path guarantees failure on any machine (CI runners
+	// ship docker, so "assume it is missing" would be host-dependent).
+	stubDockerBin(t, filepath.Join(t.TempDir(), "docker"))
 	err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"})
 	if err == nil {
 		t.Fatal("docker start without a docker binary must error")
@@ -1100,10 +1102,11 @@ func withFakeDocker(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	sh := "#!/bin/sh\necho nope >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(sh), 0o755); err != nil {
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte(sh), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubDockerBin(t, path)
 }
 
 func TestStopContainerFakeFailure(t *testing.T) {

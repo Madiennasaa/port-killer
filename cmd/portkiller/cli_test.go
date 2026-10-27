@@ -171,7 +171,7 @@ func exitCode(err error) (int, bool) {
 func stubActivePorts(t *testing.T, items []PortItem) {
 	t.Helper()
 	old := activePorts
-	activePorts = func() []PortItem { return items }
+	activePorts = func() ([]PortItem, error) { return items, nil }
 	t.Cleanup(func() { activePorts = old })
 }
 
@@ -287,5 +287,31 @@ func TestCLIListTextPrintsOneRowPerListener(t *testing.T) {
 	}
 	if got := strings.Count(out, "\n"); got != 2 {
 		t.Errorf("row count = %d, want 2\n%s", got, out)
+	}
+}
+
+func TestCLIListScanErrorStillLists(t *testing.T) {
+	old := activePorts
+	activePorts = func() ([]PortItem, error) {
+		return []PortItem{{Proto: "tcp", Port: "3000", PID: "1", Process: "node"}}, errors.New("ss down")
+	}
+	t.Cleanup(func() { activePorts = old })
+
+	out := captureStdout(t, func() { cliList(false) })
+	if !strings.Contains(out, "3000") {
+		t.Errorf("partial results must still be listed, got %q", out)
+	}
+}
+
+func TestCLIKillScanErrorExitsNothingListening(t *testing.T) {
+	oldPorts, oldExit := activePorts, exitProcess
+	activePorts = func() ([]PortItem, error) { return nil, errors.New("ss down") }
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { activePorts, exitProcess = oldPorts, oldExit })
+
+	cliKill([]string{"--kill", "1"}, false)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
 	}
 }

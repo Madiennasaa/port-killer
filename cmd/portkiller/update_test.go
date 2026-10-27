@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +55,7 @@ func TestUpdatePortsMsgSeedsHistoryOnce(t *testing.T) {
 	m := testModel()
 	m.seeded = false
 	items := []PortItem{{Proto: "tcp", Port: "3000", PID: "1", Process: "node", Source: "host"}}
-	nm, cmd := m.update(portsMsg(items))
+	nm, cmd := m.update(portsMsg{Items: items})
 	got := nm.(model)
 	if !got.seeded {
 		t.Error("first portsMsg must seed the model")
@@ -69,7 +71,7 @@ func TestUpdatePortsMsgSeedsHistoryOnce(t *testing.T) {
 	}
 
 	// A refresh arriving before the health result must not queue another run.
-	nm, cmd = got.update(portsMsg(items))
+	nm, cmd = got.update(portsMsg{Items: items})
 	if cmd != nil {
 		t.Error("hBusy should suppress a duplicate health command")
 	}
@@ -82,7 +84,7 @@ func TestUpdatePortsMsgDropsStaleHealth(t *testing.T) {
 	old := healthKey("tcp", "0.0.0.0", "3000", "999")
 	m.health = map[string]healthResult{old: {status: HealthAlive}}
 	m.all = []PortItem{{Proto: "tcp", Addr: "0.0.0.0", Port: "3000", PID: "1", Process: "node"}}
-	nm, _ := m.update(portsMsg(m.all))
+	nm, _ := m.update(portsMsg{Items: m.all})
 	got := nm.(model)
 	if _, ok := got.health[old]; ok {
 		t.Error("health entry for a vanished pid must be dropped")
@@ -270,3 +272,24 @@ var errTest = &testErr{}
 type testErr struct{}
 
 func (*testErr) Error() string { return "boom" }
+
+func TestUpdatePortsMsgShowsScanError(t *testing.T) {
+	withTempHome(t)
+	m := testModel()
+	m.seeded = true
+	m.all = []PortItem{{Proto: "tcp", Port: "3000", PID: "1", Process: "node"}}
+	nm, cmd := m.update(portsMsg{Err: errors.New("ss: boom")})
+	got := nm.(model)
+	if !got.isErr || !strings.Contains(got.message, "boom") {
+		t.Errorf("scan error not surfaced: %q (isErr=%v)", got.message, got.isErr)
+	}
+	if got.msgAt.IsZero() {
+		t.Error("scan error must set msgAt so it can expire")
+	}
+	if len(got.all) != 1 || got.all[0].Port != "3000" {
+		t.Errorf("partial scan must not replace the last good snapshot: %+v", got.all)
+	}
+	if cmd != nil {
+		t.Error("a failed scan must not trigger another refresh")
+	}
+}

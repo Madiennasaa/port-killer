@@ -296,4 +296,7 @@ func enrichProject(item *PortItem) {
 		return err == nil
 	}, ownerHome(pid))
 	item.Project = normalizeProjectName(item.Project)
+	if st, ok := procStartTime(pid); ok {
+		item.startTime = st
+	}
 }

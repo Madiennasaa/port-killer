@@ -3,7 +3,9 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -137,8 +139,11 @@ func TestKillProcessBadPID(t *testing.T) {
 	}
 }
 
-func TestGetActivePortsRuns(t *testing.T) {
-	items := GetActivePorts()
+func TestScanPortsRuns(t *testing.T) {
+	items, err := scanPorts()
+	if err != nil {
+		t.Skipf("ss unavailable: %v", err)
+	}
 	seen := map[string]bool{}
 	for _, it := range items {
 		key := it.Proto + "|" + it.Port + "|" + it.PID
@@ -157,5 +162,31 @@ func TestGetDockerPortsWithoutDocker(t *testing.T) {
 		if got := GetDockerPorts(); got != nil {
 			t.Errorf("no docker on PATH: got %+v", got)
 		}
+	}
+}
+
+func TestScanPortsSurfacesSSError(t *testing.T) {
+	old := ssBin
+	ssBin = filepath.Join(t.TempDir(), "missing-ss")
+	t.Cleanup(func() { ssBin = old })
+
+	items, err := scanPorts()
+	if err == nil || !strings.Contains(err.Error(), "ss -tulnp") {
+		t.Fatalf("err = %v, want an ss failure", err)
+	}
+	if items == nil {
+		t.Error("items must be non-nil even when ss fails")
+	}
+}
+
+func TestInitialModelShowsScanError(t *testing.T) {
+	withTempHome(t)
+	old := ssBin
+	ssBin = filepath.Join(t.TempDir(), "missing-ss")
+	t.Cleanup(func() { ssBin = old })
+
+	m := initialModel()
+	if !m.isErr || !strings.Contains(m.message, "ss -tulnp") {
+		t.Errorf("initial scan error not surfaced: %q (isErr=%v)", m.message, m.isErr)
 	}
 }

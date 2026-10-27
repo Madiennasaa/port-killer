@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ func cliNeedsRoot(args []string) bool {
 	}
 	for _, a := range args {
 		switch a {
-		case "--list", "--json", "--kill", "--force":
+		case "--list", "--kill", "--force":
 			return true
 		}
 	}
@@ -43,6 +44,8 @@ func hasFlag(args []string, f string) bool {
 //
 //	portkiller --list [--json]
 //	portkiller --kill PORT [--force]
+//	portkiller --free START-END [--json]
+//	portkiller --history [--port N] [--limit N] [--json]
 //	portkiller --help
 //	portkiller --version
 func runCLI(args []string) bool {
@@ -54,6 +57,10 @@ func runCLI(args []string) bool {
 		cliHelp()
 	case hasFlag(args, "--version") || hasFlag(args, "-v"):
 		cliVersion()
+	case hasFlag(args, "--history"):
+		cliHistory(args, hasFlag(args, "--json"))
+	case hasFlag(args, "--free"):
+		cliFree(args, hasFlag(args, "--json"))
 	case hasFlag(args, "--list"):
 		cliList(hasFlag(args, "--json"))
 	case hasFlag(args, "--kill"):
@@ -99,8 +106,10 @@ func killLoop(port string, force bool, items []PortItem, stop func(PortItem, boo
 }
 
 func cliHelp() {
-	fmt.Println("usage: portkiller [--list [--json]] [--kill PORT [--force]] [--version]")
+	fmt.Println("usage: portkiller [--list [--json]] [--kill PORT [--force]] [--free START-END [--json]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
+	fmt.Println("--free prints the first port that can be bound in the given range")
+	fmt.Println("--history prints recent appear/vanished events, newest first")
 }
 
 func cliVersion() {
@@ -114,7 +123,7 @@ var exitProcess = os.Exit
 // activePorts and marshalPorts are seams so the --list/--kill paths are
 // testable without depending on the host's listeners or on marshalling.
 var (
-	activePorts  = GetActivePorts
+	activePorts  = scanPorts
 	marshalPorts = json.MarshalIndent
 )
 
@@ -131,7 +140,10 @@ func rejectUnknownFlag(args []string) bool {
 }
 
 func cliList(asJSON bool) {
-	items := activePorts()
+	items, err := activePorts()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+	}
 	if asJSON {
 		b, err := marshalPorts(items, "", "  ")
 		if err != nil {
@@ -162,7 +174,11 @@ func cliKill(args []string, force bool) {
 		fmt.Fprintln(os.Stderr, "warning: --force was given but cliKill was called without it")
 	}
 
-	n, failed := killLoop(port, force, activePorts(), stopItem)
+	items, err := activePorts()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+	}
+	n, failed := killLoop(port, force, items, stopItem)
 	if n == 0 && !failed {
 		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", port)
 		exitProcess(1)
@@ -173,10 +189,24 @@ func cliKill(args []string, force bool) {
 	}
 }
 
-// stopItem stops a container by id and everything else by signal.
+// stopItem stops a container by id and everything else by signal. A host
+// process is only signalled when its kernel start time still matches the one
+// captured during the scan, so a recycled PID cannot be killed by mistake.
 func stopItem(it PortItem, force bool) error {
 	if it.IsDocker() {
 		return StopContainer(it.PID)
 	}
-	return KillProcess(it.PID, force)
+	pid, err := strconv.Atoi(it.PID)
+	if err != nil {
+		return err
+	}
+	if it.startTime != 0 {
+		if cur, ok := readStartTime(pid); ok && cur != it.startTime {
+			return fmt.Errorf("pid %d has been reused; refusing to stop it", pid)
+		}
+	}
+	if unit, ok := serviceUnit(pid); ok {
+		return systemctl("stop", unit)
+	}
+	return stopPID(pid, force)
 }

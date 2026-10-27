@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -23,26 +20,34 @@ type PortItem struct {
 	Health  HealthStatus
 	Latency time.Duration
 	Orphan  bool
+
+	// startTime is the kernel jiffie timestamp of the owning process, used to
+	// refuse a kill when the PID has been reused. Unexported: it is an
+	// implementation detail, not part of the --json contract.
+	startTime uint64
 }
 
 func (p PortItem) IsDocker() bool { return p.Source == "docker" }
 
-func GetActivePorts() []PortItem {
+// scanPorts collects listeners. The error is non-nil when ss fails, so the TUI
+// can show it instead of silently rendering an empty table; docker results are
+// still returned in that case.
+func scanPorts() ([]PortItem, error) {
 	// Non-nil from the start: --list --json must print "[]" (not "null") when
 	// nothing is listening, and callers treat the result as always present.
 	items := []PortItem{}
 
-	cmd := exec.Command("ss", "-tulnp")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err == nil {
-		items = append(items, parseSS(out.String())...)
+	var scanErr error
+	if out, err := commandOutput(ssBin, "-tulnp"); err == nil {
+		items = append(items, parseSS(string(out))...)
+	} else {
+		scanErr = fmt.Errorf("ss -tulnp: %w", err)
 	}
 
 	items = append(items, GetDockerPorts()...)
 	fillUptime(items)
 	enrichAll(items)
-	return items
+	return items, scanErr
 }
 
 // ssListening reports whether an `ss` line is a listening socket we show.
@@ -142,7 +147,7 @@ func enrichAll(items []PortItem) {
 // (missing binary, too many pids) yields an empty map rather than an error:
 // uptime is decoration, not data worth failing a scan for.
 func psUptimeMap(pids []string) map[string]string {
-	out, err := exec.Command("ps", "-o", "pid=,etime=", "-p", strings.Join(pids, ",")).Output()
+	out, err := commandOutput(psBin, "-o", "pid=,etime=", "-p", strings.Join(pids, ","))
 	if err != nil && len(out) == 0 {
 		return map[string]string{}
 	}
@@ -176,7 +181,7 @@ func fillUptime(items []PortItem) {
 }
 
 func GetDockerPorts() []PortItem {
-	out, err := exec.Command("docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}|{{.Status}}").Output()
+	out, err := commandOutput(dockerBin, "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}|{{.Status}}")
 	if err != nil {
 		return nil
 	}
@@ -261,20 +266,17 @@ func parseProcessInfo(info string) (string, string) {
 	return pid, procName
 }
 
+// KillProcess stops a process by pid with the same graceful ladder as the TUI.
 func KillProcess(pid string, force bool) error {
 	n, err := strconv.Atoi(pid)
 	if err != nil {
 		return err
 	}
-	sig := syscall.SIGTERM
-	if force {
-		sig = syscall.SIGKILL
-	}
-	return syscall.Kill(n, sig)
+	return stopPID(n, force)
 }
 
 func StopContainer(id string) error {
-	out, err := exec.Command("docker", "stop", id).CombinedOutput()
+	out, err := commandCombined(dockerBin, "stop", id)
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}
