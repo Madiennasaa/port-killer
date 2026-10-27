@@ -23,7 +23,8 @@ func TestProjectTargets(t *testing.T) {
 		{Port: "22", PID: "11", Process: "sshd", Source: "host"},  // systemProcs
 		{Port: "99", PID: "12", Process: "svc", Source: "host"},   // uid 100
 		{Port: "5432", PID: "abc", Process: "docker:db", Source: "docker"},
-		{Port: "80", PID: "13", Process: "node", Source: "host"}, // uid tak terbaca -> ikut
+		{Port: "80", PID: "13", Process: "node", Source: "host"},     // uid tak terbaca -> ikut
+		{Port: "81", PID: "14", Process: "rootproc", Source: "host"}, // uid 0 -> skip
 	}}
 	uid := func(pid int) (int, bool) {
 		switch pid {
@@ -31,6 +32,8 @@ func TestProjectTargets(t *testing.T) {
 			return 100, true
 		case 10:
 			return 1000, true
+		case 14:
+			return 0, true
 		}
 		return 0, false
 	}

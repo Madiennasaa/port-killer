@@ -738,17 +738,17 @@ func TestStopContainerError(t *testing.T) {
 	}
 }
 
-func TestSSItemDockerProxySkipped(t *testing.T) {
+func TestSSItemsDockerProxySkipped(t *testing.T) {
 	// docker-proxy listeners are owned by the docker source.
 	fields := strings.Fields(`tcp LISTEN 0 4096 127.0.0.1:2375 0.0.0.0:* users:(("docker-proxy",pid=1,fd=3))`)
-	if _, ok := ssItem(fields); ok {
-		t.Error("docker-proxy must be skipped")
+	if got := ssItems(fields); len(got) != 0 {
+		t.Errorf("docker-proxy must be skipped, got %+v", got)
 	}
 	// A well-formed line parses.
 	fields = strings.Fields(`tcp LISTEN 0 4096 127.0.0.1:8080 0.0.0.0:* users:(("node",pid=1,fd=3))`)
-	it, ok := ssItem(fields)
-	if !ok || it.Port != "8080" || it.Process != "node" {
-		t.Fatalf("got %+v ok=%v", it, ok)
+	items := ssItems(fields)
+	if len(items) != 1 || items[0].Port != "8080" || items[0].Process != "node" {
+		t.Fatalf("got %+v", items)
 	}
 }
 
@@ -1573,22 +1573,22 @@ func TestHandleMouseFooterAndRowClick(t *testing.T) {
 	}
 }
 
-// ---- scanner.go: ssItem docker-proxy and splitAddr failures ----
+// ---- scanner.go: ssItems docker-proxy and splitAddr failures ----
 
-func TestSSItemRejectsDockerProxyAndBadAddr(t *testing.T) {
-	if _, ok := ssItem([]string{"tcp", "LISTEN", "0", "0", "not-an-addr", "0", "users:((\"x\",pid=1,fd=3))"}); ok {
-		t.Error("an unparseable local address must be rejected")
+func TestSSItemsRejectsDockerProxyAndBadAddr(t *testing.T) {
+	if got := ssItems([]string{"tcp", "LISTEN", "0", "0", "not-an-addr", "0", "users:((\"x\",pid=1,fd=3))"}); len(got) != 0 {
+		t.Errorf("an unparseable local address must be rejected, got %+v", got)
 	}
 	// splitAddr succeeds but the process is docker-proxy: the docker source
-	// owns those, so ssItem must drop the line.
+	// owns those, so ssItems must drop the line.
 	fields := []string{"tcp", "LISTEN", "0", "0", "*:5000", "0", "users:((\"docker-proxy\",pid=1,fd=3))"}
-	if _, ok := ssItem(fields); ok {
-		t.Error("docker-proxy listeners must be dropped")
+	if got := ssItems(fields); len(got) != 0 {
+		t.Errorf("docker-proxy listeners must be dropped, got %+v", got)
 	}
 	// No pid info at all: parseProcessInfo yields an empty pid.
 	fields = []string{"tcp", "LISTEN", "0", "0", "*:5000", "0", "-"}
-	if _, ok := ssItem(fields); ok {
-		t.Error("lines with no process info must be dropped")
+	if got := ssItems(fields); len(got) != 0 {
+		t.Errorf("lines with no process info must be dropped, got %+v", got)
 	}
 }
 

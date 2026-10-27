@@ -12,6 +12,8 @@ import (
 // loadEvents reads every valid event in append order. Malformed lines (a torn
 // write, a partial line) are skipped instead of failing the whole history.
 func loadEvents(path string) []Event {
+	lock := lockEvents(path, false)
+	defer unlockEvents(lock)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil

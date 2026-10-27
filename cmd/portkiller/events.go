@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -67,6 +68,41 @@ func eventsPath() string {
 
 const maxEvents = 1000
 
+// eventsFlock is a seam so tests can exercise lock failures and EINTR.
+var eventsFlock = syscall.Flock
+
+// lockEvents serializes access to the events file across processes. It is best
+// effort: nil is returned when locking is unavailable and the caller proceeds.
+func lockEvents(path string, exclusive bool) *os.File {
+	f, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil
+	}
+	how := syscall.LOCK_SH
+	if exclusive {
+		how = syscall.LOCK_EX
+	}
+	for {
+		err = eventsFlock(int(f.Fd()), how)
+		if err != syscall.EINTR {
+			break
+		}
+	}
+	if err != nil {
+		f.Close()
+		return nil
+	}
+	return f
+}
+
+func unlockEvents(f *os.File) {
+	if f == nil {
+		return
+	}
+	_ = eventsFlock(int(f.Fd()), syscall.LOCK_UN)
+	_ = f.Close()
+}
+
 func appendEvents(path string, evs []Event) {
 	if len(evs) == 0 {
 		return
@@ -74,6 +110,8 @@ func appendEvents(path string, evs []Event) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
+	lock := lockEvents(path, true)
+	defer unlockEvents(lock)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
@@ -84,7 +122,7 @@ func appendEvents(path string, evs []Event) {
 		}
 	}
 	f.Close()
-	chownToSudoUser(filepath.Dir(path), path)
+	chownToSudoUser(filepath.Dir(path), path, path+".lock")
 	if b, err := os.ReadFile(path); err == nil && strings.Count(string(b), "\n") > maxEvents+200 {
 		os.WriteFile(path, []byte(trimLines(string(b), maxEvents)), 0o644)
 	}

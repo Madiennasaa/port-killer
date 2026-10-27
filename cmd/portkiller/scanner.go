@@ -72,25 +72,30 @@ func splitAddr(localAddr string) (addr, port string, ok bool) {
 	return localAddr[:i], localAddr[i+1:], true
 }
 
-// ssItem converts one `ss` line into a PortItem. ok is false when the line
-// carries no process info or names docker-proxy (the docker source owns those).
-func ssItem(fields []string) (PortItem, bool) {
+// ssItems converts one `ss` line into a PortItem per owning process, since a
+// socket may be shared by several pids (SO_REUSEPORT). Lines without process
+// info and docker-proxy listeners (owned by the docker source) are dropped.
+func ssItems(fields []string) []PortItem {
 	addr, port, ok := splitAddr(fields[4])
 	if !ok {
-		return PortItem{}, false
+		return nil
 	}
-	pid, procName := parseProcessInfo(fields[len(fields)-1])
-	if pid == "" || procName == "docker-proxy" {
-		return PortItem{}, false
+	refs := parseProcessInfos(fields[len(fields)-1])
+	var out []PortItem
+	for _, r := range refs {
+		if r[1] == "docker-proxy" {
+			continue
+		}
+		out = append(out, PortItem{
+			Proto:   fields[0],
+			Addr:    addr,
+			Port:    port,
+			Process: r[1],
+			PID:     r[0],
+			Source:  "host",
+		})
 	}
-	return PortItem{
-		Proto:   fields[0],
-		Addr:    addr,
-		Port:    port,
-		Process: procName,
-		PID:     pid,
-		Source:  "host",
-	}, true
+	return out
 }
 
 // parseSS turns `ss -tulnp` output into host listeners.
@@ -104,16 +109,14 @@ func parseSS(out string) []PortItem {
 		if !ssListening(fields) {
 			continue
 		}
-		it, ok := ssItem(fields)
-		if !ok {
-			continue
+		for _, it := range ssItems(fields) {
+			key := it.Proto + "-" + it.Port + "-" + it.PID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			items = append(items, it)
 		}
-		key := it.Proto + "-" + it.Port + "-" + it.PID
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		items = append(items, it)
 	}
 	return items
 }
@@ -239,31 +242,53 @@ func parseDockerPS(out string) []PortItem {
 	return items
 }
 
+// parseProcessInfos extracts every (pid, name) pair from ss users:(...) data.
+func parseProcessInfos(info string) [][2]string {
+	var out [][2]string
+	for {
+		ref, rest, ok := nextProcRef(info)
+		if !ok {
+			return out
+		}
+		out = append(out, ref)
+		info = rest
+	}
+}
+
+// nextProcRef parses the first name/pid pair in info and returns the remainder.
+func nextProcRef(info string) ([2]string, string, bool) {
+	i := strings.Index(info, `("`)
+	if i < 0 {
+		return [2]string{}, "", false
+	}
+	info = info[i+2:]
+	j := strings.Index(info, `"`)
+	if j < 0 {
+		return [2]string{}, "", false
+	}
+	name := info[:j]
+	rest := info[j+1:]
+	p := strings.Index(rest, "pid=")
+	if p < 0 {
+		return [2]string{}, "", false
+	}
+	digits := rest[p+4:]
+	n := 0
+	for n < len(digits) && digits[n] >= '0' && digits[n] <= '9' {
+		n++
+	}
+	if n == 0 {
+		return [2]string{}, "", false
+	}
+	return [2]string{digits[:n], name}, digits[n:], true
+}
+
 func parseProcessInfo(info string) (string, string) {
-	if !strings.Contains(info, "pid=") {
+	refs := parseProcessInfos(info)
+	if len(refs) == 0 {
 		return "", "unknown"
 	}
-
-	procName := "unknown"
-	if idx := strings.Index(info, `"`); idx != -1 {
-		rest := info[idx+1:]
-		if endIdx := strings.Index(rest, `"`); endIdx != -1 {
-			procName = rest[:endIdx]
-		}
-	}
-
-	pid := ""
-	if idx := strings.Index(info, "pid="); idx != -1 {
-		rest := info[idx+4:]
-		for _, ch := range rest {
-			if ch >= '0' && ch <= '9' {
-				pid += string(ch)
-			} else {
-				break
-			}
-		}
-	}
-	return pid, procName
+	return refs[0][0], refs[0][1]
 }
 
 // KillProcess stops a process by pid with the same graceful ladder as the TUI.

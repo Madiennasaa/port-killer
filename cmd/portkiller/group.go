@@ -34,7 +34,7 @@ func groupByProject(items []PortItem) []Group {
 }
 
 // projectTargets (pure): unique kill targets per PID/container.
-// Skips systemProcs and service uids (1..999). uidOf is injected for testability.
+// Skips systemProcs and root/service uids (0..999). uidOf is injected for testability.
 func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 	seen := map[string]bool{}
 	var out []PortItem
@@ -47,7 +47,7 @@ func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 				continue
 			}
 			if n, err := strconv.Atoi(it.PID); err == nil {
-				if uid, ok := uidOf(n); ok && uid >= 1 && uid <= 999 {
+				if uid, ok := uidOf(n); ok && uid <= 999 {
 					continue
 				}
 			}

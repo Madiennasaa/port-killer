@@ -223,3 +223,12 @@ func TestProcStartTime(t *testing.T) {
 		t.Error("unreadable stat must fail")
 	}
 }
+
+func TestProcGoneMalformedStat(t *testing.T) {
+	old := procFile
+	t.Cleanup(func() { procFile = old })
+	procFile = func(string) ([]byte, error) { return []byte("garbage"), nil }
+	if !procGone(1) {
+		t.Fatal("an unparseable stat must count as gone")
+	}
+}

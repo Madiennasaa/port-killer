@@ -190,3 +190,33 @@ func TestInitialModelShowsScanError(t *testing.T) {
 		t.Errorf("initial scan error not surfaced: %q (isErr=%v)", m.message, m.isErr)
 	}
 }
+
+func TestParseSSMultiOwnerSocket(t *testing.T) {
+	out := `tcp LISTEN 0 4096 0.0.0.0:3100 0.0.0.0:* users:(("node",pid=111,fd=1),("node",pid=112,fd=2))`
+	items := parseSS(out)
+	if len(items) != 2 {
+		t.Fatalf("got %d items, want 2: %+v", len(items), items)
+	}
+	seen := map[string]bool{}
+	for _, it := range items {
+		seen[it.PID] = true
+		if it.Port != "3100" || it.Process != "node" {
+			t.Errorf("item = %+v", it)
+		}
+	}
+	if !seen["111"] || !seen["112"] {
+		t.Errorf("pids = %v, want 111 and 112", seen)
+	}
+}
+
+func TestParseProcessInfos(t *testing.T) {
+	refs := parseProcessInfos(`users:(("node",pid=111,fd=1),("node",pid=112,fd=2))`)
+	if len(refs) != 2 || refs[0] != [2]string{"111", "node"} || refs[1] != [2]string{"112", "node"} {
+		t.Errorf("refs = %v", refs)
+	}
+	for _, bad := range []string{"", "-", `users:(("x`, `users:(("x"`, `users:(("x",fd=1))`, `users:(("x",pid=,fd=1))`} {
+		if got := parseProcessInfos(bad); len(got) != 0 {
+			t.Errorf("parseProcessInfos(%q) = %v, want empty", bad, got)
+		}
+	}
+}

@@ -6,6 +6,7 @@ Data sources: `ss`, `/proc`, and `docker ps`.
 ## Features
 
 - **Docker-aware**: containers are stopped with `docker stop`, not by killing `docker-proxy`
+- **Multi-owner aware**: a socket shared by several processes is listed once per PID
 - **Project-aware**: PROJECT column from the process cwd plus markers (`.git`, `go.mod`, `composer.json`, `package.json`)
 - **Health check**: parallel TCP dial per port
 - **Orphan detector**: TCP, no tty, parent PID 1/systemd, belongs to a project
@@ -43,7 +44,7 @@ Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
 | `i` or `Tab` | Detail panel |
 | `h` | History |
 | `c` | Conflict check vs `docker-compose.yml` / `.env` |
-| `P` | Stop all processes of the project |
+| `P` | Stop all processes of the project (skips root/system processes) |
 | `R` | Restart last stopped |
 | `?` or `F1` | Help |
 | `F10`, `q` or `Ctrl+C` | Quit |
