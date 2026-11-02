@@ -20,7 +20,7 @@ func cliNeedsRoot(args []string) bool {
 	}
 	for _, a := range args {
 		switch a {
-		case "--list", "--kill", "--force":
+		case "--list", "--kill", "--force", "--watch":
 			return true
 		}
 	}
@@ -61,6 +61,8 @@ func runCLI(args []string) bool {
 		cliHistory(args, hasFlag(args, "--json"))
 	case hasFlag(args, "--free"):
 		cliFree(args, hasFlag(args, "--json"))
+	case hasFlag(args, "--watch"):
+		cliWatch(args)
 	case hasFlag(args, "--list"):
 		cliList(hasFlag(args, "--json"))
 	case hasFlag(args, "--completions"):
@@ -136,6 +138,7 @@ func cliHelp() {
 	fmt.Println("--dry-run prints what --kill would stop without touching anything")
 	fmt.Println("--free prints the first port that can be bound in the given range")
 	fmt.Println("--history prints recent appear/vanished events, newest first")
+	fmt.Println("--watch tails port appear/vanish/guard events until Ctrl+C; add --notify for desktop notifications")
 	fmt.Println("--completions prints a completion script; source it or place it")
 	fmt.Println("  in your shell's completion directory (fish: ~/.config/fish/completions/portkiller.fish)")
 }

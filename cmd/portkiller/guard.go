@@ -116,3 +116,18 @@ func itoaSimple(n int) string {
 	}
 	return s
 }
+
+// guardNotifyText strips violationText for the desktop-notification body.
+func guardNotifyText(vs []Violation) string {
+	return strings.TrimSpace(violationText(vs))
+}
+
+// notifySend fires a desktop notification for guard violations. It is a no-op
+// without a display server. A seam so tests can capture the calls.
+var notifySend = func(title, body string) error {
+	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		return nil
+	}
+	_, err := commandOutput(resolveBin("notify-send"), title, body)
+	return err
+}

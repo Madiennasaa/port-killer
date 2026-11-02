@@ -10,7 +10,8 @@ import (
 // three completion scripts share it so completions cannot drift from reality.
 var cliFlags = []string{
 	"--help", "--version", "--list", "--json", "--kill", "--force",
-	"--dry-run", "--free", "--history", "--port", "--limit", "--completions",
+	"--dry-run", "--free", "--watch", "--notify", "--history", "--port",
+	"--limit", "--completions",
 }
 
 // completionScripts holds the raw completion source per supported shell.
@@ -21,7 +22,7 @@ _portkiller() {
 	local cur prev
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	local flags="--help --version --list --json --kill --force --dry-run --free --history --port --limit --completions"
+	local flags="--help --version --list --json --kill --force --dry-run --free --watch --notify --history --port --limit --completions"
 	case "$prev" in
 		--completions)
 			COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
@@ -45,7 +46,7 @@ _portkiller() {
 	flags=('--help[show help]' '--version[print version]' '--list[list listeners]'
 		'--json[machine-readable output]' '--kill[stop listeners by port]'
 		'--force[use SIGKILL instead of SIGTERM]' '--dry-run[preview the kill without stopping]'
-		'--free[print the first free port in a range]' '--history[show appear/vanished events]'
+		'--free[print the first free port in a range]' '--watch[tail port events until Ctrl+C]' '--notify[notify on watch events]' '--history[show appear/vanished events]'
 		'--port[filter history by port]' '--limit[limit history results]' '--completions[print a completion script]')
 	shells=(bash zsh fish)
 	if [[ ${words[2]} == --completions ]]; then _ describe -t shells shell shells; fi
@@ -62,6 +63,8 @@ complete -c portkiller -l kill -F -d 'stop listeners by port'
 complete -c portkiller -l force -f -d 'use SIGKILL instead of SIGTERM'
 complete -c portkiller -l dry-run -f -d 'preview the kill without stopping'
 complete -c portkiller -l free -F -d 'print the first free port in a range'
+complete -c portkiller -l watch -f -d 'tail port events until Ctrl+C'
+complete -c portkiller -l notify -f -d 'notify on watch events'
 complete -c portkiller -l history -f -d 'show appear/vanished events'
 complete -c portkiller -l port -F -d 'filter history by port'
 complete -c portkiller -l limit -f -a '(seq 1 100)' -d 'limit history results'

@@ -82,8 +82,9 @@ func TestRunCLIExitCodes(t *testing.T) {
 	}{
 		{[]string{"--bogus"}, 2},
 		{[]string{"--kill"}, 2},
-		{[]string{"--kill", "notaport"}, 1}, // parses fine, nothing listens
-		{[]string{"--kill", "1"}, 1},        // nothing listens on port 1
+		{[]string{"--watch", "--port", "70000"}, 2}, // dispatch + bad port exits fast
+		{[]string{"--kill", "notaport"}, 1},         // parses fine, nothing listens
+		{[]string{"--kill", "1"}, 1},                // nothing listens on port 1
 	}
 	for _, c := range cases {
 		cmd := exec.Command(os.Args[0], "-test.run=TestRunCLIHelperProcess", "--")

@@ -91,6 +91,10 @@ type model struct {
 	ptarget    []PortItem
 	pname      string
 	detail     Detail
+
+	// pendingBell marks a newly detected guard violation that must ring the
+	// terminal bell on the next Update, then be consumed.
+	pendingBell bool
 }
 
 func initialModel() model {
@@ -306,6 +310,12 @@ func (m *model) checkGuardNow() {
 	}
 	m.guardSeen = cur
 	appendEvents(eventsPath(), evs)
+	// A brand-new violation (one whose key was unseen) alerts: desktop
+	// notification plus a terminal bell on the next Update, once per event.
+	if len(evs) > 0 {
+		m.pendingBell = true
+		_ = notifySend("portkiller guard", guardNotifyText(m.violations))
+	}
 }
 
 func (m *model) markCause() { m.cause, m.causeAt = "stopped via portkiller", time.Now() }
@@ -390,11 +400,18 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyHealth()
 		m.rebuild()
 		m.refreshDetail()
+		var cmd tea.Cmd
 		if !m.hBusy {
 			m.hBusy = true
-			return m, healthCmd(m.all)
+			cmd = healthCmd(m.all)
 		}
-		return m, nil
+		if m.pendingBell {
+			m.pendingBell = false
+			// bubbletea v1 has no native bell cmd; a BEL print rings the
+			// terminal and renders nothing visible.
+			cmd = tea.Batch(cmd, tea.Printf("\a"))
+		}
+		return m, cmd
 
 	case healthResultMsg:
 		m.hBusy = false
