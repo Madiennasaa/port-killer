@@ -29,6 +29,7 @@ fmt:
 
 install: build
 	sudo install -m 755 $(BIN) /usr/local/bin/$(BIN)
+	sudo install -m 644 docs/portkiller.1 /usr/local/share/man/man1/$(BIN).1
 
 clean:
 	rm -f $(BIN) coverage.out

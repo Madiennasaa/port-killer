@@ -85,14 +85,14 @@ func TestConflictDirReal(t *testing.T) {
 // ---- cli.go ----
 
 func TestKillArgs(t *testing.T) {
-	if port, force := killArgs([]string{"--kill", "8080", "--force"}); port != "8080" || !force {
-		t.Fatalf("got %q %v", port, force)
+	if ports, force := killTargets([]string{"--kill", "8080", "--force"}); !slicesEqual(ports, []string{"8080"}) || !force {
+		t.Fatalf("got %v %v", ports, force)
 	}
-	if port, force := killArgs([]string{"--kill"}); port != "" || force {
-		t.Fatalf("tanpa target harus kosong, got %q %v", port, force)
+	if ports, force := killTargets([]string{"--kill"}); len(ports) != 0 || force {
+		t.Fatalf("tanpa target harus kosong, got %v %v", ports, force)
 	}
-	if port, _ := killArgs([]string{"--kill", "--force"}); port != "" {
-		t.Fatalf("flag sebagai target harus ditolak, got %q", port)
+	if ports, _ := killTargets([]string{"--kill", "--force"}); len(ports) != 0 {
+		t.Fatalf("flag sebagai target harus ditolak, got %v", ports)
 	}
 }
 

@@ -61,6 +61,7 @@ Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner
 
 - `~/.config/portkiller/guard.conf`: guard rules
 - `~/.local/state/portkiller/events.jsonl`: history log
+- `docs/portkiller.1`: man page, installed by `make install` to `/usr/local/share/man/man1`
 
 ## Development
 
@@ -80,11 +81,16 @@ MIT
     portkiller --list --json     # machine-readable
     portkiller --kill 8765       # SIGTERM, then SIGKILL after 3s; docker/systemd aware
     portkiller --kill 8765 --force
+    portkiller --kill 3000 8080  # several ports in one command
+    portkiller --kill 3000 --dry-run   # preview the impact, stop nothing
     portkiller --free 3000-3010  # first bindable port in the range
     portkiller --free 3000-3010 --json
     portkiller --history         # recent appear/vanished events, newest first
     portkiller --history --port 3000 --limit 50
     portkiller --history --json
+    portkiller --completions bash > ~/.local/share/bash-completion/completions/portkiller
+    portkiller --completions zsh > "${fpath[1]}/_portkiller"
+    portkiller --completions fish > ~/.config/fish/completions/portkiller.fish
 
 Host processes are stopped with SIGTERM and get 3 seconds to exit before
 SIGKILL. A process is only signalled when its PID still belongs to the same

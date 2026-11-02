@@ -153,6 +153,52 @@ func TestCLIKillForceMismatchHelper(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestDryRunKillForceScanWarnAndSkipOtherPorts(t *testing.T) {
+	// SIGKILL verb, a listener on an unrequested port that must be skipped, and
+	// a scan error that becomes a warning while still previewing what we have.
+	old := activePorts
+	activePorts = func() ([]PortItem, error) {
+		return []PortItem{
+			{Port: "3000", PID: "42", Process: "node", Source: "ss"},
+			{Port: "9999", PID: "43", Process: "go", Source: "ss"},
+		}, errors.New("ss down")
+	}
+	t.Cleanup(func() { activePorts = old })
+	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, true) })
+	if !strings.Contains(out, "SIGKILL") || !strings.Contains(out, "PID 42") {
+		t.Errorf("dry run output wrong:\n%s", out)
+	}
+	if strings.Contains(out, "9999") || strings.Contains(out, "go") {
+		t.Errorf("dry run leaked unrequested port 9999:\n%s", out)
+	}
+}
+
+func TestCLIKillDryRunFlagRoutesToPreview(t *testing.T) {
+	// cliKill must route --dry-run through dryRunKill instead of scanning twice.
+	items := []PortItem{{Port: "3000", PID: "42", Process: "node", Source: "ss"}}
+	stubActivePorts(t, items)
+	var code int
+	old := exitProcess
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	out := captureStdout(t, func() { cliKill([]string{"--kill", "3000", "--dry-run"}, false) })
+	if code != 0 {
+		t.Errorf("exit code after dry run = %d, want 0 (no exit)", code)
+	}
+	if !strings.Contains(out, "SIGTERM") {
+		t.Errorf("dry run output wrong:\n%s", out)
+	}
+}
+
+func TestCompletionsSkipFlagLookingShells(t *testing.T) {
+	// --completions may be followed by other flags before the shell name.
+	stubActivePorts(t, nil)
+	out := captureStdout(t, func() { cliCompletions([]string{"--completions", "--json", "zsh"}) })
+	if !strings.Contains(out, "#compdef portkiller") {
+		t.Errorf("zsh completions missing:\n%s", out)
+	}
+}
+
 func exitCode(err error) (int, bool) {
 	if err == nil {
 		return 0, true
@@ -300,6 +346,113 @@ func TestCLIListScanErrorStillLists(t *testing.T) {
 	out := captureStdout(t, func() { cliList(false) })
 	if !strings.Contains(out, "3000") {
 		t.Errorf("partial results must still be listed, got %q", out)
+	}
+}
+
+func TestKillTargetsCollectsConsecutiveNonFlagArgs(t *testing.T) {
+	cases := []struct {
+		args  []string
+		ports []string
+		force bool
+	}{
+		{[]string{"--kill", "8765"}, []string{"8765"}, false},
+		{[]string{"--kill"}, nil, false},
+		{[]string{"--kill", "--force"}, nil, true},
+		{[]string{"--kill", "3000", "--force"}, []string{"3000"}, true},
+		{[]string{"--kill", "3000", "8080", "--force"}, []string{"3000", "8080"}, true},
+		{[]string{"--kill", "3000", "8080", "9090"}, []string{"3000", "8080", "9090"}, false},
+		{[]string{"--list", "--kill", "3000"}, []string{"3000"}, false},
+		{[]string{"--list"}, nil, false}, // no --kill at all
+	}
+	for _, c := range cases {
+		ports, force := killTargets(c.args)
+		if !slicesEqual(ports, c.ports) {
+			t.Errorf("killTargets(%v) ports = %v, want %v", c.args, ports, c.ports)
+		}
+		if force != c.force {
+			t.Errorf("killTargets(%v) force = %v, want %v", c.args, force, c.force)
+		}
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestKillLoopStopsEveryPortAndDeduplicatesByPID(t *testing.T) {
+	items := []PortItem{
+		{Port: "3000", PID: "42", Process: "node"},
+		{Port: "8080", PID: "42", Process: "node"},
+		{Port: "8080", PID: "43", Process: "go"},
+	}
+	var stopped []string
+	n, failed := killMulti(targetSet([]string{"3000", "8080"}), false, items, func(it PortItem, force bool) error {
+		stopped = append(stopped, it.PID+"@"+it.Port)
+		return nil
+	})
+	if failed {
+		t.Error("killMulti reported failed on a clean run")
+	}
+	// PID 42 listens on two ports; one stop frees both, so it is signalled once.
+	want := []string{"42@3000", "43@8080"}
+	if len(stopped) != len(want) {
+		t.Fatalf("stopped %v, want %v", stopped, want)
+	}
+	for i := range want {
+		if stopped[i] != want[i] {
+			t.Errorf("stop %d = %s, want %s", i, stopped[i], want[i])
+		}
+	}
+	if n != 2 {
+		t.Errorf("n = %d, want 2", n)
+	}
+}
+
+func TestKillLoopFailedFlagAndCount(t *testing.T) {
+	items := []PortItem{
+		{Port: "3000", PID: "42", Process: "node"},
+		{Port: "3000", PID: "43", Process: "go"},
+	}
+	n, failed := killMulti(targetSet([]string{"3000"}), false, items, func(it PortItem, force bool) error {
+		if it.PID == "43" {
+			return errors.New("boom")
+		}
+		return nil
+	})
+	if n != 1 || !failed {
+		t.Errorf("n=%d failed=%v, want n=1 failed=true", n, failed)
+	}
+}
+
+func TestCLIKillDryRunDoesNotStop(t *testing.T) {
+	items := []PortItem{
+		{Proto: "tcp", Port: "3000", PID: "42", Process: "node", Source: "ss"},
+		{Proto: "tcp", Port: "3000", PID: "7", Process: "web", Source: "docker"},
+	}
+	stubActivePorts(t, items)
+	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, false) })
+	if !strings.Contains(out, "PID 42") || !strings.Contains(out, "container 7") || !strings.Contains(out, "docker") {
+		t.Errorf("dry run output missing targets/docker marker:\n%s", out)
+	}
+}
+
+func TestCLIKillDryRunNothingListeningExitsOne(t *testing.T) {
+	stubActivePorts(t, nil)
+	old := exitProcess
+	var code int
+	exitProcess = func(c int) { code = c }
+	t.Cleanup(func() { exitProcess = old })
+	dryRunKill([]string{"1"}, false)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (nothing listening)", code)
 	}
 }
 

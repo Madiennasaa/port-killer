@@ -14,7 +14,7 @@ import (
 func cliNeedsRoot(args []string) bool {
 	for _, a := range args {
 		switch a {
-		case "--help", "-h", "--version", "-v":
+		case "--help", "-h", "--version", "-v", "--completions":
 			return false
 		}
 	}
@@ -63,6 +63,8 @@ func runCLI(args []string) bool {
 		cliFree(args, hasFlag(args, "--json"))
 	case hasFlag(args, "--list"):
 		cliList(hasFlag(args, "--json"))
+	case hasFlag(args, "--completions"):
+		cliCompletions(args)
 	case hasFlag(args, "--kill"):
 		cliKill(args, hasFlag(args, "--force"))
 	default:
@@ -71,26 +73,48 @@ func runCLI(args []string) bool {
 	return true
 }
 
-// killArgs (pure): find the --kill target and whether --force was given.
-// A missing or flag-looking target yields port "".
-func killArgs(args []string) (port string, force bool) {
+// killTargets (pure): find the --kill targets and whether --force was given.
+// Targets are the arguments that directly follow --kill (multiple are allowed);
+// a missing or flag-looking argument yields no target.
+func killTargets(args []string) (ports []string, force bool) {
 	for i, a := range args {
-		if a == "--kill" && i+1 < len(args) {
-			c := args[i+1]
-			if c != "" && !strings.HasPrefix(c, "--") {
-				port = c
-			}
+		if a != "--kill" {
+			continue
 		}
+		for _, c := range args[i+1:] {
+			if c == "" || strings.HasPrefix(c, "--") {
+				break
+			}
+			ports = append(ports, c)
+		}
+		return ports, hasFlag(args, "--force")
 	}
-	return port, hasFlag(args, "--force")
+	return nil, hasFlag(args, "--force")
+}
+
+// targetSet maps requested ports for O(1) matching in killMulti.
+func targetSet(ports []string) map[string]bool {
+	set := make(map[string]bool, len(ports))
+	for _, p := range ports {
+		set[p] = true
+	}
+	return set
 }
 
 // killLoop runs stopItem over every listener on port, printing each result.
 // It returns how many were stopped and whether any failed.
 func killLoop(port string, force bool, items []PortItem, stop func(PortItem, bool) error) (n int, failed bool) {
+	return killMulti(targetSet([]string{port}), force, items, stop)
+}
+
+// killMulti runs stopItem over every listener whose port is in ports, printing
+// each result. A PID shared by several matching ports is signalled once: one
+// stop frees every port it listens on. It returns how many were stopped and
+// whether any failed.
+func killMulti(ports map[string]bool, force bool, items []PortItem, stop func(PortItem, bool) error) (n int, failed bool) {
 	seen := map[string]bool{}
 	for _, it := range items {
-		if it.Port != port || seen[it.PID] {
+		if !ports[it.Port] || seen[it.PID] {
 			continue
 		}
 		seen[it.PID] = true
@@ -106,10 +130,14 @@ func killLoop(port string, force bool, items []PortItem, stop func(PortItem, boo
 }
 
 func cliHelp() {
-	fmt.Println("usage: portkiller [--list [--json]] [--kill PORT [--force]] [--free START-END [--json]] [--version]")
+	fmt.Println("usage: portkiller [--list [--json]] [--kill PORT... [--force] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
+	fmt.Println("--kill accepts several ports and shows the impact before stopping")
+	fmt.Println("--dry-run prints what --kill would stop without touching anything")
 	fmt.Println("--free prints the first port that can be bound in the given range")
 	fmt.Println("--history prints recent appear/vanished events, newest first")
+	fmt.Println("--completions prints a completion script; source it or place it")
+	fmt.Println("  in your shell's completion directory (fish: ~/.config/fish/completions/portkiller.fish)")
 }
 
 func cliVersion() {
@@ -159,11 +187,12 @@ func cliList(asJSON bool) {
 	}
 }
 
-// cliKill stops everything listening on port. Exit codes: 1 = nothing stopped
-// or at least one failure, 2 = bad --kill argument.
+// cliKill stops everything listening on the requested ports. Exit codes:
+// 1 = nothing stopped, at least one failure, or a port with no listener
+// 2 = bad --kill argument
 func cliKill(args []string, force bool) {
-	port, forceFlag := killArgs(args)
-	if port == "" {
+	ports, forceFlag := killTargets(args)
+	if len(ports) == 0 {
 		fmt.Fprintln(os.Stderr, "--kill needs a port number")
 		exitProcess(2)
 		return
@@ -174,17 +203,73 @@ func cliKill(args []string, force bool) {
 		fmt.Fprintln(os.Stderr, "warning: --force was given but cliKill was called without it")
 	}
 
+	if hasFlag(args, "--dry-run") {
+		dryRunKill(ports, force)
+		return
+	}
 	items, err := activePorts()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "warning:", err)
 	}
-	n, failed := killLoop(port, force, items, stopItem)
-	if n == 0 && !failed {
-		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", port)
-		exitProcess(1)
-		return
+	stopAndReport(ports, force, items)
+}
+
+// stopAndReport stops the listeners on the requested ports and reports the
+// outcome: one line per stop, one per port with no listener, and exit 1 when
+// nothing stopped, a stop failed, or a port had no listener.
+func stopAndReport(ports []string, force bool, items []PortItem) {
+	n, failed := killMulti(targetSet(ports), force, items, stopItem)
+	missing := missingPorts(ports, items)
+	for _, p := range missing {
+		fmt.Fprintf(os.Stderr, "nothing listening on port %s\n", p)
 	}
-	if failed {
+	if n == 0 || failed || len(missing) > 0 {
+		exitProcess(1)
+	}
+}
+
+// missingPorts (pure) returns the requested ports that have no listener among
+// the scanned items.
+func missingPorts(ports []string, items []PortItem) []string {
+	matched := map[string]bool{}
+	for _, it := range items {
+		matched[it.Port] = true
+	}
+	var missing []string
+	for _, p := range ports {
+		if !matched[p] {
+			missing = append(missing, p)
+		}
+	}
+	return missing
+}
+
+// dryRunKill previews what --kill would stop, one line per listener, without
+// touching anything. Exit 1 when no requested port has a listener.
+func dryRunKill(ports []string, force bool) {
+	set := targetSet(ports)
+	items, err := activePorts()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+	}
+	verb := "SIGTERM"
+	if force {
+		verb = "SIGKILL"
+	}
+	matched := 0
+	for _, it := range items {
+		if !set[it.Port] {
+			continue
+		}
+		if it.IsDocker() {
+			fmt.Printf("would stop %s (container %s) via docker stop on port %s\n", it.Process, it.PID, it.Port)
+		} else {
+			fmt.Printf("would stop %s (PID %s) via %s on port %s\n", it.Process, it.PID, verb, it.Port)
+		}
+		matched++
+	}
+	if matched == 0 {
+		fmt.Fprintln(os.Stderr, "no matching listener on the requested ports")
 		exitProcess(1)
 	}
 }

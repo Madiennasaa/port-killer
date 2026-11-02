@@ -1,0 +1,65 @@
+.\" Manual page for portkiller.
+.TH PORTKILLER 1 "2026" "portkiller" "User Commands"
+.SH NAME
+portkiller \- interactive terminal port manager for Linux
+.SH SYNOPSIS
+.B portkiller
+.RI [ options ]
+.SH DESCRIPTION
+.B portkiller
+shows who is listening on which ports, enriched with process, project,
+health and kill-impact information, and stops listeners safely: host
+processes get SIGTERM (then SIGKILL after 3 seconds with
+.BR --force ),
+containers are stopped with docker stop, and systemd services through
+systemctl. A PID is only signalled while its kernel start time still
+matches the scan, so a recycled PID cannot be killed by mistake.
+Running with no flags starts the interactive TUI.
+.SH OPTIONS
+.TP
+.BR \-\-list " [\\" \-\-json " \|]"
+Print a table of all listeners; \-\-json emits machine-readable JSON.
+.TP
+.BI \-\-kill " PORT..."
+Stop everything listening on the given port(s). Multiple ports may be
+given in one command. A container is stopped via \fIdocker stop\fP, a
+systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM.
+Retry with \fI--force\fP to escalate to SIGKILL if the PID is still
+alive after 3 seconds.
+.TP
+.B \-\-dry\-run
+With \fI--kill\fP: print one line per listener showing what would be
+stopped and how, without touching anything.
+.TP
+.BR \-\-free " \fISTART\-END\fP [\\fI\-\-json\fP]"
+Print the first bindable TCP port in the range.
+.TP
+.BR \-\-history " [\\fI\-\-port\fP N] [\\fI\-\-limit\fP N] [\-\-json]"
+Print recent appear/vanished events from the events log, newest first.
+.TP
+.BI \-\-completions " SHELL"
+Print a completion script for \fIbash\fP, \fIzsh\fP or \fIfish\fP.
+.BR \ \-\-help ", " \-\-version
+Show help or version information. These run without sudo.
+.SH EXIT CODES
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Nothing stopped, at least one stop failed, or a requested port has no
+listener.
+.TP
+.B 2
+Bad or unknown argument.
+.SH FILES
+.TP
+.IR ~/.config/portkiller/guard.conf
+Guard rules, one \fIport=owner\fP per line.
+.TP
+.IR ~/.local/state/portkiller/events.jsonl
+History log of port appear/vanish events.
+.SH SEE ALSO
+.BR ss (8),
+.BR docker (1),
+.BR systemctl (1)
