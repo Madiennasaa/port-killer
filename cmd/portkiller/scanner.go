@@ -20,6 +20,8 @@ type PortItem struct {
 	Health  HealthStatus
 	Latency time.Duration
 	Orphan  bool
+	Cpu     string
+	Mem     string
 
 	// startTime is the kernel jiffie timestamp of the owning process, used to
 	// refuse a kill when the PID has been reused. Unexported: it is an
@@ -47,6 +49,7 @@ func scanPorts() ([]PortItem, error) {
 	items = append(items, GetDockerPorts()...)
 	fillUptime(items)
 	enrichAll(items)
+	enrichUsages(items)
 	return items, scanErr
 }
 

@@ -108,7 +108,7 @@ func detailLines(it PortItem, d Detail) []string {
 		" Cmd     : " + d.Cmdline,
 		" Cwd     : " + d.Cwd,
 		" User    : " + d.User + "   Parent: " + d.Parent,
-		" Memory  : " + d.Mem + "   Threads: " + d.Threads + "   Bind: " + it.Addr + "   Project: " + it.Project,
+		" Memory  : " + d.Mem + "   CPU: " + orDash(it.Cpu) + "   Threads: " + d.Threads + "   Bind: " + it.Addr + "   Project: " + it.Project,
 	}
 }
 
@@ -161,4 +161,12 @@ func (m model) detailRows() int {
 		return detailHeight
 	}
 	return 0
+}
+
+// orDash renders an unset usage value (an item not yet enriched) as "-".
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
