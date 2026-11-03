@@ -30,6 +30,9 @@ given in one command. A container is stopped via \fIdocker stop\fP or
 systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM.
 Retry with \fI--force\fP to escalate to SIGKILL if the PID is still
 alive after 3 seconds.
+A listener run by a process manager (pm2, supervisord, nodemon, forever,
+runit, s6) gets a warning on stderr naming the command that stops it for
+good, since the manager may start it again.
 .TP
 .BI \-\-kill\-name " NAME..."
 Stop every listener whose process name, or container name, is

@@ -247,6 +247,7 @@ func cliKill(args []string, force bool) {
 // when nothing stopped, a stop failed, or a target had no listener.
 func stopAndReport(ports, names []string, force bool, items []PortItem, stop func(PortItem, bool) error) bool {
 	sel := selectTargets(ports, names, items)
+	warnSupervised(sel)
 	n, failed := killMulti(targetSet(portsOf(sel)), force, sel, stop)
 	missing := missingPorts(ports, items)
 	for _, p := range missing {
@@ -296,6 +297,7 @@ func dryRunKill(ports, names []string, verb string) {
 			fmt.Printf("would stop %s (PID %s) via %s on port %s\n", it.Process, it.PID, verb, it.Port)
 		}
 	}
+	warnSupervised(sel)
 	if len(sel) == 0 {
 		fmt.Fprintln(os.Stderr, "no matching listener on the requested ports")
 		exitProcess(1)

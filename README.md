@@ -12,6 +12,7 @@ Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 - **Health check**: parallel TCP dial per port
 - **Orphan detector**: TCP, no tty, parent PID 1/systemd, belongs to a project
 - **Blast radius**: the kill dialog shows connections, clients, and child processes
+- **Respawn warning**: a listener run by pm2, supervisord, nodemon, forever, runit or s6 is flagged in the kill dialog and by `--kill`/`--dry-run`, with the command that stops it for good (`pm2 stop 3`, `supervisorctl stop web`)
 - **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause

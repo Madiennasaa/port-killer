@@ -19,7 +19,8 @@ type Conn struct {
 type Blast struct {
 	Conns    int
 	Children int
-	Clients  []string // nama proses klien
+	Clients  []string   // nama proses klien
+	Super    Supervisor // process manager that may restart it (Name "" = none)
 }
 
 // parseProcNetTCP (pure): parses /proc/net/tcp or tcp6 contents (header skipped).
@@ -184,6 +185,7 @@ func ComputeBlast(it PortItem) Blast {
 	b.Clients = summarizeClients(names)
 	if pid, err := strconv.Atoi(it.PID); err == nil {
 		b.Children = countChildren(readPPIDs(), pid)
+		b.Super, _ = supervisorOf(pid)
 	}
 	return b
 }
@@ -193,12 +195,16 @@ func blastText(b Blast, loading bool) string {
 	if loading {
 		return "calculating impact..."
 	}
-	if b.Conns == 0 && b.Children == 0 {
-		return "no impact detected"
+	s := "no impact detected"
+	if b.Conns != 0 || b.Children != 0 {
+		s = "dropping " + strconv.Itoa(b.Conns) + " connections"
+		if len(b.Clients) > 0 {
+			s += " (" + strings.Join(b.Clients, ", ") + ")"
+		}
+		s += ", " + strconv.Itoa(b.Children) + " child processes"
 	}
-	s := "dropping " + strconv.Itoa(b.Conns) + " connections"
-	if len(b.Clients) > 0 {
-		s += " (" + strings.Join(b.Clients, ", ") + ")"
+	if b.Super.Name != "" {
+		s += "; " + b.Super.Name + " may restart it (" + b.Super.Hint + ")"
 	}
-	return s + ", " + strconv.Itoa(b.Children) + " child processes"
+	return s
 }
