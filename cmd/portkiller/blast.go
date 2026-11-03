@@ -169,7 +169,7 @@ func ComputeBlast(it PortItem) Blast {
 	}
 	est := countEstablished(conns, port)
 	b.Conns = len(est)
-	if it.IsDocker() {
+	if it.IsContainer() {
 		return b
 	}
 	inodes := map[string]bool{}

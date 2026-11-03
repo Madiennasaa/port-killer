@@ -21,6 +21,7 @@ const (
 	modeConfirm
 	modeConfirmOrphans
 	modeConfirmProject
+	modeConfirmBatch
 )
 
 var sortNames = []string{"PORT", "PROCESS", "PID", "PROTO"}
@@ -41,6 +42,7 @@ var (
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	orphanStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	markStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
 )
 
 var systemProcs = map[string]bool{
@@ -92,6 +94,16 @@ type model struct {
 	pname      string
 	detail     Detail
 
+	// hidden holds process names the user hid with H; showHidden (U) lists
+	// them anyway, dimmed.
+	hidden     map[string]bool
+	showHidden bool
+
+	// marked holds itemKey of rows selected with Space; a stop key then acts
+	// on every marked row (btarget) instead of the cursor row.
+	marked  map[string]bool
+	btarget []PortItem
+
 	// pendingBell marks a newly detected guard violation that must ring the
 	// terminal bell on the next Update, then be consumed.
 	pendingBell bool
@@ -105,6 +117,7 @@ func initialModel() model {
 	}
 	m.all = items
 	m.guard = loadGuard()
+	m.hidden = loadHidden()
 	m.guardSeen = map[string]bool{}
 	m.checkGuardNow()
 	m.applyHealth()
@@ -145,6 +158,9 @@ func (m model) protoMatches(it PortItem) bool {
 // free-text search (which also covers the project cwd).
 func (m model) matchesFilter(it PortItem, lowerFilter string) bool {
 	if m.orphans && !it.Orphan {
+		return false
+	}
+	if m.hidden[it.Process] && !m.showHidden {
 		return false
 	}
 	if lowerFilter == "" {
@@ -223,7 +239,42 @@ func (m *model) clamp() {
 	}
 }
 
+// itemKey identifies one row across refreshes (a pid may own several ports).
+func itemKey(it PortItem) string { return it.Proto + "|" + it.Port + "|" + it.PID }
+
+// markedItems returns the marked rows still present in the latest scan, in
+// table order.
+func (m model) markedItems() []PortItem {
+	var out []PortItem
+	for _, it := range m.view {
+		if m.marked[itemKey(it)] {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// pruneMarks forgets marks whose row vanished, so a later stop cannot target
+// a recycled pid/port pair the user never selected.
+func (m *model) pruneMarks() {
+	if len(m.marked) == 0 {
+		return
+	}
+	alive := map[string]bool{}
+	for _, it := range m.all {
+		if k := itemKey(it); m.marked[k] {
+			alive[k] = true
+		}
+	}
+	m.marked = alive
+}
+
 func (m *model) askKill(force bool) {
+	if t := m.markedItems(); len(t) > 0 {
+		m.btarget, m.force = t, force
+		m.mode = modeConfirmBatch
+		return
+	}
 	if len(m.view) == 0 {
 		return
 	}
@@ -238,7 +289,7 @@ func orphanItems(all []PortItem) []PortItem {
 	seen := map[string]bool{}
 	var out []PortItem
 	for _, it := range all {
-		if !it.Orphan || it.IsDocker() || seen[it.PID] {
+		if !it.Orphan || it.IsContainer() || seen[it.PID] {
 			continue
 		}
 		seen[it.PID] = true
@@ -395,6 +446,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.recordEvents(msg.Items)
 		m.all = msg.Items
+		m.pruneMarks()
 		m.checkGuardNow()
 		m.pruneStaleHealth()
 		m.applyHealth()
@@ -453,6 +505,12 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.finishWork(
 			fmt.Sprintf("Project %s: %d stopped", msg.project, msg.done),
 			fmt.Sprintf("Project %s: %d OK, err: %v", msg.project, msg.done, msg.err),
+			msg.err)
+
+	case batchMsg:
+		return m.finishWork(
+			fmt.Sprintf("Stopped %d selected", msg.done),
+			fmt.Sprintf("Selected: %d OK, err: %v", msg.done, msg.err),
 			msg.err)
 
 	case orphansMsg:

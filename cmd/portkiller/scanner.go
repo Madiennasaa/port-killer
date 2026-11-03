@@ -23,13 +23,19 @@ type PortItem struct {
 	Cpu     string
 	Mem     string
 
+	// ctrUser is the account a rootless podman container belongs to ("" =
+	// the user portkiller runs as), so stop/start run under that account.
+	ctrUser string
+
 	// startTime is the kernel jiffie timestamp of the owning process, used to
 	// refuse a kill when the PID has been reused. Unexported: it is an
 	// implementation detail, not part of the --json contract.
 	startTime uint64
 }
 
-func (p PortItem) IsDocker() bool { return p.Source == "docker" }
+// IsContainer reports whether the item is a published container port (docker
+// or podman) rather than a host process.
+func (p PortItem) IsContainer() bool { return p.Source == "docker" || p.Source == "podman" }
 
 // scanPorts collects listeners. The error is non-nil when ss fails, so the TUI
 // can show it instead of silently rendering an empty table; docker results are
@@ -46,7 +52,8 @@ func scanPorts() ([]PortItem, error) {
 		scanErr = fmt.Errorf("ss -tulnp: %w", err)
 	}
 
-	items = append(items, GetDockerPorts()...)
+	items = append(items, containerPorts()...)
+	items = dropContainerProxies(items)
 	fillUptime(items)
 	enrichAll(items)
 	enrichUsages(items)
@@ -129,7 +136,7 @@ func enrichAll(items []PortItem) {
 	cache := make(map[string][2]string) // pid -> {cwd, project}
 	orphanCache := map[string]bool{}
 	for i := range items {
-		if items[i].IsDocker() {
+		if items[i].IsContainer() {
 			enrichProject(&items[i])
 			items[i].Orphan = false
 			continue
@@ -171,7 +178,7 @@ func psUptimeMap(pids []string) map[string]string {
 func fillUptime(items []PortItem) {
 	var pids []string
 	for _, it := range items {
-		if !strings.HasPrefix(it.Process, "docker:") {
+		if !it.IsContainer() {
 			pids = append(pids, it.PID)
 		}
 	}
@@ -186,17 +193,10 @@ func fillUptime(items []PortItem) {
 	}
 }
 
-func GetDockerPorts() []PortItem {
-	out, err := commandOutput(dockerBin, "ps", "--format", "{{.ID}}|{{.Names}}|{{.Ports}}|{{.Status}}")
-	if err != nil {
-		return nil
-	}
-	return parseDockerPS(string(out))
-}
-
-// parseDockerPS turns `docker ps --format` output into published-port items.
-// Lines without "->" (no publish) and malformed lines are skipped.
-func parseDockerPS(out string) []PortItem {
+// parseContainerPS turns `docker ps` / `podman ps --format` output into
+// published-port items tagged with runtime ("docker" or "podman"). Lines
+// without "->" (no publish) and malformed lines are skipped.
+func parseContainerPS(out, runtime string) []PortItem {
 	var items []PortItem
 	seen := make(map[string]bool)
 
@@ -235,10 +235,10 @@ func parseDockerPS(out string) []PortItem {
 				Proto:   proto,
 				Addr:    addr,
 				Port:    port,
-				Process: "docker:" + name,
+				Process: runtime + ":" + name,
 				PID:     id,
 				Uptime:  uptime,
-				Source:  "docker",
+				Source:  runtime,
 			})
 		}
 	}
@@ -301,12 +301,4 @@ func KillProcess(pid string, force bool) error {
 		return err
 	}
 	return stopPID(n, force)
-}
-
-func StopContainer(id string) error {
-	out, err := commandCombined(dockerBin, "stop", id)
-	if err != nil {
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
 }

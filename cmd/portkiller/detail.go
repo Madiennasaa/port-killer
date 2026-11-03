@@ -61,8 +61,8 @@ func formatKB(s string) string {
 
 func readDetail(it PortItem) Detail {
 	d := Detail{Cmdline: "-", Cwd: "-", User: "-", Parent: "-", Mem: "-", Threads: "-"}
-	if it.IsDocker() {
-		d.Cmdline = "container " + strings.TrimPrefix(it.Process, "docker:") + " (" + it.PID + ")"
+	if it.IsContainer() {
+		d.Cmdline = "container " + containerName(it) + " (" + it.PID + ")"
 		return d
 	}
 	pid, err := strconv.Atoi(it.PID)
@@ -119,9 +119,12 @@ func helpLines() []string {
 		" F4 or t                    Protocol TCP / UDP / ALL",
 		" F5 or r                    Manual refresh (auto every 2s)",
 		" F6 or s                    Sort PORT / PROCESS / PID / PROTO",
-		" F9 or Enter                Stop (SIGTERM / docker stop) + impact",
+		" F9 or Enter                Stop (SIGTERM / container stop) + impact",
 		" F8 or K                    Force kill (SIGKILL)",
 		" i or Tab                   Detail panel for selected row",
+		" Space                      Mark row; F9/F8 then stop every marked row",
+		" b                          Open http://localhost:<port> in the browser",
+		" H / U                      Hide/unhide process name / show hidden rows",
 		" c                          Check port conflicts (compose/.env in current dir)",
 		" h                          Port history (appeared/vanished + cause)",
 		" o                          Show orphans only",
@@ -131,7 +134,7 @@ func helpLines() []string {
 		" ? or F1                    This help",
 		" F10 or q                   Quit",
 		"",
-		" Marker  ⚠ orphan (TCP, no tty, belongs to a project)",
+		" Marker  ⚠ orphan (TCP, no tty, belongs to a project)   ✓ marked   ◌ hidden",
 		" Health  ● alive   ○ no response   … pending   - UDP",
 	}
 }

@@ -1,11 +1,11 @@
 # portkiller
 
 A terminal UI port manager for Linux, built with Go, Bubble Tea, and Lip Gloss.
-Data sources: `ss`, `/proc`, and `docker ps`.
+Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 
 ## Features
 
-- **Docker-aware**: containers are stopped with `docker stop`, not by killing `docker-proxy`
+- **Container-aware**: Docker and Podman containers are stopped with `docker stop` / `podman stop`, not by killing `docker-proxy` or `rootlessport`. Under sudo, the invoking user's rootless Podman containers are listed too and stopped as that user
 - **Multi-owner aware**: a socket shared by several processes is listed once per PID
 - **Project-aware**: PROJECT column from the process cwd plus markers (`.git`, `go.mod`, `composer.json`, `package.json`)
 - **Health check**: parallel TCP dial per port
@@ -15,6 +15,9 @@ Data sources: `ss`, `/proc`, and `docker ps`.
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause
 - **Conflict check** (`c`): ports declared in `docker-compose.yml` or `.env` of the current directory vs. running listeners
+- **Multi-select**: mark rows with `Space`, then stop them all in one confirmation
+- **Open in browser** (`b`): opens `http://localhost:<port>` as the desktop user, never as root
+- **Hide noisy processes** (`H`): persisted in `~/.config/portkiller/hidden`; `U` shows them dimmed
 - **Responsive layout + mouse support**
 
 ## Install
@@ -38,8 +41,11 @@ Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
 | `F4` or `t` | Protocol: TCP / UDP / ALL |
 | `F5` or `r` | Refresh (auto every 2s) |
 | `F6` or `s` | Sort |
-| `F9` or `Enter` | Stop (SIGTERM / `docker stop`) with impact preview |
+| `F9` or `Enter` | Stop (SIGTERM / `docker stop` / `podman stop`) with impact preview; acts on all marked rows if any |
 | `F8` or `K` | Force kill (SIGKILL) |
+| `Space` | Mark / unmark row (`Esc` clears marks and search) |
+| `b` | Open the port in the browser |
+| `H` / `U` | Hide / unhide the process name / show hidden rows |
 | `o` / `X` | Orphans only / clean up orphans |
 | `i` or `Tab` | Detail panel |
 | `h` | History |
@@ -61,6 +67,7 @@ Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner
 
 - `~/.config/portkiller/guard.conf`: guard rules
 - `~/.local/state/portkiller/events.jsonl`: history log
+- `~/.config/portkiller/hidden`: process names hidden from the table
 - `docs/portkiller.1`: man page, installed by `make install` to `/usr/local/share/man/man1`
 
 ## Development

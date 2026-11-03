@@ -130,16 +130,25 @@ func (m model) View() string {
 			pid = pid[:8]
 		}
 		mark := " "
-		if it.Orphan {
+		switch {
+		case m.marked[itemKey(it)]:
+			mark = "✓"
+		case m.hidden[it.Process]:
+			mark = "◌"
+		case it.Orphan:
 			mark = "⚠"
 		}
 		line := m.rowText(mark, it.Proto, it.Addr, it.Port, pid, it.Uptime, it.Project, healthText(it), it.Process)
 
 		st := normalStyle
 		switch {
+		case m.marked[itemKey(it)]:
+			st = markStyle
+		case m.hidden[it.Process]:
+			st = sysStyle
 		case it.Orphan:
 			st = orphanStyle
-		case strings.HasPrefix(it.Process, "docker:"):
+		case it.IsContainer():
 			st = dockerStyle
 		case systemProcs[it.Process]:
 			st = sysStyle
@@ -176,7 +185,17 @@ func (m model) View() string {
 	switch {
 	case m.mode == modeConfirmProject:
 		h, d := projectSummary(m.ptarget)
-		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Stop project %s: %d processes, %d containers (SIGTERM/docker stop): %s? [y/N]", m.pname, h, d, projectNames(m.ptarget, 3))) + "\n")
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" Stop project %s: %d processes, %d containers (SIGTERM/container stop): %s? [y/N]", m.pname, h, d, projectNames(m.ptarget, 3))) + "\n")
+	case m.mode == modeConfirmBatch:
+		verb := "Stop"
+		if m.force {
+			verb = "KILL -9"
+		}
+		names := make([]string, 0, len(m.btarget))
+		for _, it := range m.btarget {
+			names = append(names, it.Process+"(:"+it.Port+")")
+		}
+		b.WriteString(m.fullWidth(warnStyle, fmt.Sprintf(" %s %d selected: %s? [y/N]", verb, len(m.btarget), strings.Join(names, ", "))) + "\n")
 	case m.mode == modeConfirmOrphans:
 		names := make([]string, 0, len(m.otarget))
 		for _, it := range m.otarget {
@@ -222,8 +241,8 @@ func (m model) View() string {
 	} else if nOrphan != nOrphanView {
 		orphanFlag = " | orphans hidden by filter"
 	}
-	info := fmt.Sprintf(" %d port | orphan: %d%s | proto: %s | sort: %s | filter: %q | up: %s%s",
-		len(m.view), nOrphan, orphanFlag, protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
+	info := fmt.Sprintf(" %d port | orphan: %d%s%s | proto: %s | sort: %s | filter: %q | up: %s%s",
+		len(m.view), nOrphan, orphanFlag, m.markHiddenInfo(), protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
 	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
 
 	// Footer
@@ -234,4 +253,25 @@ func (m model) View() string {
 	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(fb.String()))
 
 	return b.String()
+}
+
+// markHiddenInfo is the info-bar fragment for marked and hidden rows; empty
+// when neither is in use.
+func (m model) markHiddenInfo() string {
+	s := ""
+	if n := len(m.markedItems()); n > 0 {
+		s += fmt.Sprintf(" | marked: %d", n)
+	}
+	hidden := 0
+	for _, it := range m.all {
+		if m.hidden[it.Process] {
+			hidden++
+		}
+	}
+	if hidden > 0 && m.showHidden {
+		s += fmt.Sprintf(" | hidden: %d shown", hidden)
+	} else if hidden > 0 {
+		s += fmt.Sprintf(" | hidden: %d", hidden)
+	}
+	return s
 }

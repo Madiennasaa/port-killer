@@ -40,6 +40,34 @@ type orphansMsg struct {
 	err  error
 }
 
+type batchMsg struct {
+	done int
+	err  error
+}
+
+// stopEach stops every item and returns how many succeeded plus the first
+// error, so one failure does not abort the rest of a batch.
+func stopEach(items []PortItem, force bool) (done int, firstErr error) {
+	for _, it := range items {
+		if err := stopItem(it, force); err == nil {
+			done++
+		} else if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return done, firstErr
+}
+
+// stopBatchCmd stops the rows marked with Space.
+func stopBatchCmd(targets []PortItem, force bool) tea.Cmd {
+	snap := make([]PortItem, len(targets))
+	copy(snap, targets)
+	return func() tea.Msg {
+		done, err := stopEach(snap, force)
+		return batchMsg{done: done, err: err}
+	}
+}
+
 func blastCmd(it PortItem) tea.Cmd {
 	return func() tea.Msg {
 		return blastMsg{pid: it.PID, port: it.Port, blast: ComputeBlast(it)}
@@ -50,16 +78,8 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 	snap := make([]PortItem, len(targets))
 	copy(snap, targets)
 	return func() tea.Msg {
-		done := 0
-		var firstErr error
-		for _, it := range snap {
-			if err := stopItem(it, false); err == nil {
-				done++
-			} else if firstErr == nil {
-				firstErr = err
-			}
-		}
-		return projectMsg{project: project, done: done, err: firstErr}
+		done, err := stopEach(snap, false)
+		return projectMsg{project: project, done: done, err: err}
 	}
 }
 
@@ -101,21 +121,14 @@ func killCmd(item PortItem, force bool) tea.Cmd {
 
 // killOrphansCmd: SIGTERM semua orphan host, lewati Docker.
 func killOrphansCmd(items []PortItem) tea.Cmd {
-	snap := make([]PortItem, len(items))
-	copy(snap, items)
-	return func() tea.Msg {
-		done := 0
-		var firstErr error
-		for _, it := range snap {
-			if it.IsDocker() {
-				continue
-			}
-			if err := stopItem(it, false); err == nil {
-				done++
-			} else if firstErr == nil {
-				firstErr = err
-			}
+	var snap []PortItem
+	for _, it := range items {
+		if !it.IsContainer() {
+			snap = append(snap, it)
 		}
-		return orphansMsg{done: done, err: firstErr}
+	}
+	return func() tea.Msg {
+		done, err := stopEach(snap, false)
+		return orphansMsg{done: done, err: err}
 	}
 }

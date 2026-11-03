@@ -245,7 +245,7 @@ func parentCommOf(ppid int) string {
 
 // enrichOrphan mengisi Orphan; Docker selalu false. Gagal baca /proc -> false.
 func enrichOrphan(item *PortItem) {
-	if item.IsDocker() {
+	if item.IsContainer() {
 		item.Orphan = false
 		return
 	}
@@ -275,8 +275,8 @@ func enrichOrphan(item *PortItem) {
 // enrichProject mengisi Cwd/Project; aman terhadap error /proc.
 // If readCwd fails on permissions (e.g. a root process when run without sudo) -> "-".
 func enrichProject(item *PortItem) {
-	if item.IsDocker() {
-		item.Project = strings.TrimPrefix(item.Process, "docker:")
+	if item.IsContainer() {
+		item.Project = containerName(*item)
 		item.Cwd = "-"
 		return
 	}

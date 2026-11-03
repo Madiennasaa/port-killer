@@ -29,7 +29,7 @@ func TestRestartable(t *testing.T) {
 }
 
 func TestRestartDesc(t *testing.T) {
-	if got := restartDesc(Restartable{Docker: true, Name: "web"}); got != "docker start web" {
+	if got := restartDesc(Restartable{Container: true, Name: "web"}); got != "docker start web" {
 		t.Errorf("docker desc = %q", got)
 	}
 	if got := restartDesc(Restartable{Cmd: []string{"node", "a.js"}}); got != "node a.js" {
@@ -39,7 +39,7 @@ func TestRestartDesc(t *testing.T) {
 
 func TestCaptureRestartDocker(t *testing.T) {
 	r, ok := captureRestart(PortItem{Source: "docker", PID: "abc123", Process: "docker:web"})
-	if !ok || !r.Docker || r.ID != "abc123" || r.Name != "web" {
+	if !ok || !r.Container || r.ID != "abc123" || r.Name != "web" {
 		t.Errorf("got %+v ok=%v", r, ok)
 	}
 }
@@ -75,7 +75,7 @@ func TestCaptureAllDedupsAndSkips(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d entries, want 2: %+v", len(got), got)
 	}
-	if got[1].Docker != true {
+	if got[1].Container != true {
 		t.Errorf("second entry should be docker: %+v", got[1])
 	}
 }

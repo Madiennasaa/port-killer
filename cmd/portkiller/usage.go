@@ -93,7 +93,7 @@ func memText(kb uint64) string {
 // processes get "-" for whichever value could not be read.
 func enrichUsage(item *PortItem, uptime float64) {
 	item.Cpu, item.Mem = "-", "-"
-	if item.IsDocker() {
+	if item.IsContainer() {
 		return
 	}
 	if _, err := strconv.Atoi(item.PID); err != nil {
@@ -118,12 +118,12 @@ func enrichUsages(items []PortItem) {
 	uptime := procUptimeSec()
 	cache := map[string][2]string{}
 	for i := range items {
-		if v, ok := cache[items[i].PID]; ok && !items[i].IsDocker() {
+		if v, ok := cache[items[i].PID]; ok && !items[i].IsContainer() {
 			items[i].Cpu, items[i].Mem = v[0], v[1]
 			continue
 		}
 		enrichUsage(&items[i], uptime)
-		if !items[i].IsDocker() {
+		if !items[i].IsContainer() {
 			cache[items[i].PID] = [2]string{items[i].Cpu, items[i].Mem}
 		}
 	}

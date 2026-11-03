@@ -87,7 +87,7 @@ func TestParseDockerPS(t *testing.T) {
 		"def445|db|0.0.0.0:5432->5432/tcp|Up 5 days\n" +
 		"ghi789|noports||Up 1 minute\n" +
 		"badline|missing-fields\n"
-	items := parseDockerPS(out)
+	items := parseContainerPS(out, "docker")
 	if len(items) != 3 {
 		t.Fatalf("got %d items, want 3: %+v", len(items), items)
 	}
@@ -105,14 +105,14 @@ func TestParseDockerPS(t *testing.T) {
 		t.Errorf("5432 = %+v", it)
 	}
 	for _, it := range items {
-		if !it.IsDocker() {
+		if !it.IsContainer() {
 			t.Errorf("%+v should be a docker item", it)
 		}
 	}
 }
 
 func TestParseDockerPSEmpty(t *testing.T) {
-	if got := parseDockerPS(""); len(got) != 0 {
+	if got := parseContainerPS("", "docker"); len(got) != 0 {
 		t.Errorf("got %d items", len(got))
 	}
 }
@@ -151,7 +151,7 @@ func TestScanPortsRuns(t *testing.T) {
 			t.Errorf("duplicate host item %v", it)
 		}
 		seen[key] = true
-		if it.IsDocker() && it.Orphan {
+		if it.IsContainer() && it.Orphan {
 			t.Error("docker items are never orphans")
 		}
 	}

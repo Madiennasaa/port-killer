@@ -11,7 +11,8 @@ shows who is listening on which ports, enriched with process, project,
 health and kill-impact information, and stops listeners safely: host
 processes get SIGTERM (then SIGKILL after 3 seconds with
 .BR --force ),
-containers are stopped with docker stop, and systemd services through
+containers are stopped with docker stop or podman stop (rootless podman
+containers as their owner), and systemd services through
 systemctl. A PID is only signalled while its kernel start time still
 matches the scan, so a recycled PID cannot be killed by mistake.
 Running with no flags starts the interactive TUI.
@@ -22,7 +23,8 @@ Print a table of all listeners; \-\-json emits machine-readable JSON.
 .TP
 .BI \-\-kill " PORT..."
 Stop everything listening on the given port(s). Multiple ports may be
-given in one command. A container is stopped via \fIdocker stop\fP, a
+given in one command. A container is stopped via \fIdocker stop\fP or
+\fIpodman stop\fP, a
 systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM.
 Retry with \fI--force\fP to escalate to SIGKILL if the PID is still
 alive after 3 seconds.
@@ -59,7 +61,11 @@ Guard rules, one \fIport=owner\fP per line.
 .TP
 .IR ~/.local/state/portkiller/events.jsonl
 History log of port appear/vanish events.
+.TP
+.IR ~/.config/portkiller/hidden
+Process names hidden from the TUI table (H toggles, U shows them).
 .SH SEE ALSO
 .BR ss (8),
 .BR docker (1),
+.BR podman (1),
 .BR systemctl (1)

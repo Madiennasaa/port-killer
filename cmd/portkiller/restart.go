@@ -22,15 +22,17 @@ var lookupUserById = user.LookupId
 // cannot make a root restart execute an impostor. Env is the process's own
 // environment, so dev servers keep their PORT/DATABASE_URL settings.
 type Restartable struct {
-	Name   string
-	Cmd    []string
-	Cwd    string
-	UID    int
-	Docker bool
-	ID     string
-	Exe    string
-	Env    []string
-	Unit   string
+	Name      string
+	Cmd       []string
+	Cwd       string
+	UID       int
+	Container bool
+	Runtime   string
+	CtrUser   string
+	ID        string
+	Exe       string
+	Env       []string
+	Unit      string
 }
 
 type restartMsg struct {
@@ -48,15 +50,15 @@ func restartDesc(r Restartable) string {
 	if r.Unit != "" {
 		return "systemctl restart " + r.Unit
 	}
-	if r.Docker {
-		return "docker start " + r.Name
+	if r.Container {
+		return runtimeOf(r.Runtime) + " start " + r.Name
 	}
 	return strings.Join(r.Cmd, " ")
 }
 
 func captureRestart(it PortItem) (Restartable, bool) {
-	if it.IsDocker() {
-		return Restartable{Name: strings.TrimPrefix(it.Process, "docker:"), Docker: true, ID: it.PID}, true
+	if it.IsContainer() {
+		return Restartable{Name: containerName(it), Container: true, Runtime: it.Source, CtrUser: it.ctrUser, ID: it.PID}, true
 	}
 	pid, err := strconv.Atoi(it.PID)
 	if err != nil {
@@ -224,20 +226,12 @@ func restartOne(r Restartable) error {
 	switch {
 	case r.Unit != "":
 		return systemctl("restart", r.Unit)
-	case r.Docker:
-		return restartDocker(r)
+	case r.Container:
+		return containerCmd(runtimeOf(r.Runtime), r.CtrUser, "start", r.ID)
 	case len(r.Cmd) == 0:
 		return fmt.Errorf("no command line captured for %s", r.Name)
 	}
 	return restartHost(r)
-}
-
-func restartDocker(r Restartable) error {
-	out, err := commandCombined(dockerBin, "start", r.ID)
-	if err != nil {
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
 }
 
 func restartHost(r Restartable) error {

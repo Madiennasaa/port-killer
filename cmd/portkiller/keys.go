@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -8,7 +10,7 @@ import (
 var footerKeys = []struct{ key, label, send string }{
 	{"F3", "Search ", "/"}, {"F4", "Proto ", "t"}, {"F5", "Refresh ", "r"}, {"F6", "Sort ", "s"},
 	{"F8", "Force ", "K"}, {"F9", "Kill ", "enter"}, {"o", "Orphan ", "o"}, {"X", "Clean ", "X"},
-	{"i", "Detail ", "i"}, {"h", "History ", "h"}, {"P", "StopProject ", "P"}, {"?", "Help ", "?"},
+	{"i", "Detail ", "i"}, {"Spc", "Mark ", " "}, {"b", "Browser ", "b"}, {"H", "Hide ", "H"}, {"h", "History ", "h"}, {"P", "StopProject ", "P"}, {"?", "Help ", "?"},
 	{"R", "Restart ", "R"}, {"c", "Conflicts ", "c"}, {"F10", "Quit ", "q"},
 }
 
@@ -97,7 +99,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.mode {
-	case modeConfirmProject, modeConfirmOrphans, modeConfirm:
+	case modeConfirmProject, modeConfirmOrphans, modeConfirm, modeConfirmBatch:
 		return m.confirmKey(key)
 	case modeFilter:
 		return m.filterKey(msg, key)
@@ -131,6 +133,11 @@ func (m model) confirmKey(key string) (tea.Model, tea.Cmd) {
 		m.message, m.isErr = "Stopping project "+m.pname+"...", false
 		m.restarts = captureAll(m.ptarget)
 		return m, killProjectCmd(m.pname, m.ptarget)
+	case modeConfirmBatch:
+		m.message, m.isErr = fmt.Sprintf("Stopping %d selected...", len(m.btarget)), false
+		m.restarts = captureAll(m.btarget)
+		m.marked = nil
+		return m, stopBatchCmd(m.btarget, m.force)
 	case modeConfirmOrphans:
 		m.message, m.isErr = "Cleaning orphans (SIGTERM)...", false
 		m.restarts = captureAll(m.otarget)
@@ -261,6 +268,16 @@ func (m model) viewToggleKey(key string) model {
 		m.mode = modeFilter
 	case "esc":
 		m.filter = ""
+		m.marked = nil
+		m.rebuild()
+	case " ":
+		m = m.toggleMark()
+	case "b":
+		m = m.openSelected()
+	case "H":
+		m = m.toggleHidden()
+	case "U":
+		m.showHidden = !m.showHidden
 		m.rebuild()
 	case "t", "f4":
 		m.proto = (m.proto + 1) % len(protoNames)
@@ -291,5 +308,66 @@ func (m model) viewToggleKey(key string) model {
 			m.askCleanOrphans()
 		}
 	}
+	return m
+}
+
+// toggleMark flips the Space mark on the cursor row and moves down, so a run
+// of rows can be marked by holding Space.
+func (m model) toggleMark() model {
+	if len(m.view) == 0 {
+		return m
+	}
+	k := itemKey(m.view[m.cursor])
+	if m.marked == nil {
+		m.marked = map[string]bool{}
+	}
+	if m.marked[k] {
+		delete(m.marked, k)
+	} else {
+		m.marked[k] = true
+	}
+	m.cursor++
+	return m
+}
+
+// openSelected opens the cursor row's URL in the desktop user's browser.
+func (m model) openSelected() model {
+	if len(m.view) == 0 {
+		return m
+	}
+	url, err := openInBrowser(m.view[m.cursor])
+	if err != nil {
+		m.message, m.isErr = "Browser: "+err.Error(), true
+		return m
+	}
+	m.message, m.isErr = "Opened "+url, false
+	return m
+}
+
+// toggleHidden hides the cursor row's process name (or unhides it when it is
+// already hidden and shown via U) and persists the set.
+func (m model) toggleHidden() model {
+	if len(m.view) == 0 {
+		return m
+	}
+	name := m.view[m.cursor].Process
+	hidden := make(map[string]bool, len(m.hidden)+1)
+	for n := range m.hidden {
+		hidden[n] = true
+	}
+	verb := "Hidden"
+	if hidden[name] {
+		delete(hidden, name)
+		verb = "Unhidden"
+	} else {
+		hidden[name] = true
+	}
+	if err := saveHidden(hiddenPath(), hidden); err != nil {
+		m.message, m.isErr = "Hide: "+err.Error(), true
+		return m
+	}
+	m.hidden = hidden
+	m.message, m.isErr = verb+" "+name+" (U shows hidden rows)", false
+	m.rebuild()
 	return m
 }

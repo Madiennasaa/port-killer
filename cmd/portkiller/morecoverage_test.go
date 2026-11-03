@@ -733,7 +733,7 @@ func TestGetDockerPortsNoDockerBinary(t *testing.T) {
 func TestStopContainerError(t *testing.T) {
 	// A missing docker binary fails and the error must be wrapped.
 	stubDockerBin(t, filepath.Join(t.TempDir(), "docker"))
-	if err := StopContainer("abc"); err == nil {
+	if err := StopContainer(PortItem{PID: "abc", Source: "docker"}); err == nil {
 		t.Error("missing docker must error")
 	}
 }
@@ -756,7 +756,7 @@ func TestParseDockerPSNoArrowSkipped(t *testing.T) {
 	out := "abc|web|\n" + // no "->"
 		"def|api|0.0.0.0:8080->80/tcp|Up 2 hours\n" +
 		"badline\n"
-	got := parseDockerPS(out)
+	got := parseContainerPS(out, "docker")
 	if len(got) != 1 || got[0].Port != "8080" {
 		t.Fatalf("got %+v", got)
 	}
@@ -878,7 +878,7 @@ func TestRestartOneDockerMissingBinary(t *testing.T) {
 	// A non-existent binary path guarantees failure on any machine (CI runners
 	// ship docker, so "assume it is missing" would be host-dependent).
 	stubDockerBin(t, filepath.Join(t.TempDir(), "docker"))
-	err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"})
+	err := restartOne(Restartable{Container: true, ID: "abc", Name: "web"})
 	if err == nil {
 		t.Fatal("docker start without a docker binary must error")
 	}
@@ -906,7 +906,7 @@ func TestCaptureRestartProcRace(t *testing.T) {
 
 func TestCaptureRestartDockerAndBadPID(t *testing.T) {
 	r, ok := captureRestart(PortItem{Source: "docker", Process: "docker:web", PID: "abc"})
-	if !ok || !r.Docker || r.Name != "web" || r.ID != "abc" {
+	if !ok || !r.Container || r.Name != "web" || r.ID != "abc" {
 		t.Fatalf("docker: %+v ok=%v", r, ok)
 	}
 	if _, ok := captureRestart(PortItem{PID: "bukan", Process: "x"}); ok {
@@ -917,7 +917,7 @@ func TestCaptureRestartDockerAndBadPID(t *testing.T) {
 func TestRestartCmdMixed(t *testing.T) {
 	// One bad (docker without binary) + one good (no-op) -> done=1, err set.
 	rs := []Restartable{
-		{Docker: true, ID: "abc", Name: "web"},
+		{Container: true, ID: "abc", Name: "web"},
 		{Cmd: []string{"true"}, Cwd: t.TempDir(), UID: os.Getuid()},
 	}
 	msg := restartCmd(rs)()
@@ -1111,7 +1111,7 @@ func withFakeDocker(t *testing.T) {
 
 func TestStopContainerFakeFailure(t *testing.T) {
 	withFakeDocker(t)
-	err := StopContainer("abc")
+	err := StopContainer(PortItem{PID: "abc", Source: "docker"})
 	if err == nil {
 		t.Fatal("a failing docker stop must error")
 	}
@@ -1129,7 +1129,7 @@ func TestGetDockerPortsFakeFailure(t *testing.T) {
 
 func TestRestartOneDockerFakeFailure(t *testing.T) {
 	withFakeDocker(t)
-	err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"})
+	err := restartOne(Restartable{Container: true, ID: "abc", Name: "web"})
 	if err == nil {
 		t.Fatal("failing docker start must error")
 	}
@@ -1596,15 +1596,15 @@ func TestSSItemsRejectsDockerProxyAndBadAddr(t *testing.T) {
 
 func TestParseDockerPSMalformedLines(t *testing.T) {
 	// A row whose ports field has no "->" mapping yields no port.
-	if got := parseDockerPS("abc|web|Up 2 hours|\n"); len(got) != 0 {
+	if got := parseContainerPS("abc|web|Up 2 hours|\n", "docker"); len(got) != 0 {
 		t.Errorf("unmapped ports must yield no items, got %+v", got)
 	}
 	// A host:port with no final ":" separator is skipped.
-	if got := parseDockerPS("abc|web|8080|\n"); len(got) != 0 {
+	if got := parseContainerPS("abc|web|8080|\n", "docker"); len(got) != 0 {
 		t.Errorf("address without a port separator must be skipped, got %+v", got)
 	}
 	// A duplicate key is kept only once.
-	got := parseDockerPS("abc|web|0.0.0.0:8080->80/tcp|\nabc|web|0.0.0.0:8080->80/tcp|\n")
+	got := parseContainerPS("abc|web|0.0.0.0:8080->80/tcp|\nabc|web|0.0.0.0:8080->80/tcp|\n", "docker")
 	if len(got) != 1 {
 		t.Errorf("duplicate rows must collapse, got %d items", len(got))
 	}
@@ -1859,12 +1859,12 @@ func TestKillProjectCmdPartialSuccess(t *testing.T) {
 
 func TestParseDockerPSHostWithoutPort(t *testing.T) {
 	// "127.0.0.1" has no ":", so LastIndex returns -1 and the line is skipped.
-	got := parseDockerPS("abc|web|127.0.0.1->80/tcp|\n")
+	got := parseContainerPS("abc|web|127.0.0.1->80/tcp|\n", "docker")
 	if len(got) != 0 {
 		t.Errorf("want 0 items, got %d", len(got))
 	}
 	// With a real host:port the item is parsed.
-	got = parseDockerPS("abc|web|127.0.0.1:8080->80/tcp|\n")
+	got = parseContainerPS("abc|web|127.0.0.1:8080->80/tcp|\n", "docker")
 	if len(got) != 1 || got[0].Port != "8080" {
 		t.Errorf("got %+v", got)
 	}
@@ -1887,7 +1887,7 @@ func TestCaptureRestartUIDVanished(t *testing.T) {
 
 func TestRestartOneDockerFailure(t *testing.T) {
 	withFakeDocker(t)
-	if err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"}); err == nil {
+	if err := restartOne(Restartable{Container: true, ID: "abc", Name: "web"}); err == nil {
 		t.Fatal("a failing docker start must return an error")
 	}
 }

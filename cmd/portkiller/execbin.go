@@ -54,6 +54,10 @@ var (
 	ssBin        = resolveBin("ss")
 	psBin        = resolveBin("ps")
 	dockerBin    = resolveBin("docker")
+	podmanBin    = resolveBin("podman")
+	runuserBin   = resolveBin("runuser")
+	envBin       = resolveBin("env")
+	xdgOpenBin   = resolveBin("xdg-open")
 	systemctlBin = resolveBin("systemctl")
 )
 

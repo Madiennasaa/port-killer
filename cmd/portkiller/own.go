@@ -6,6 +6,33 @@ import (
 	"strconv"
 )
 
+// desktopUser is the invoking account when portkiller runs as root through
+// sudo, and "" otherwise. Commands that belong to the user's session (rootless
+// podman, the browser) run as this account instead of root.
+func desktopUser() string {
+	if su := os.Getenv("SUDO_USER"); effectiveUID() == 0 && su != "" && su != "root" {
+		return su
+	}
+	return ""
+}
+
+// asUserArgv builds the command line that runs bin as user. An empty user runs
+// bin directly; otherwise it goes through runuser with that user's HOME and
+// XDG_RUNTIME_DIR, which rootless podman and desktop helpers need to find
+// their storage, socket and session bus.
+func asUserArgv(user, bin string, args ...string) (string, []string, error) {
+	if user == "" {
+		return bin, args, nil
+	}
+	u, err := lookupUser(user)
+	if err != nil {
+		return "", nil, err
+	}
+	argv := append([]string{"-u", user, "--", envBin,
+		"HOME=" + u.HomeDir, "XDG_RUNTIME_DIR=/run/user/" + u.Uid, bin}, args...)
+	return runuserBin, argv, nil
+}
+
 // effectiveUID is a seam so chownToSudoUser's root path is testable without
 // an actual root process.
 var effectiveUID = os.Geteuid

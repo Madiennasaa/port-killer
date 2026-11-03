@@ -264,8 +264,8 @@ func dryRunKill(ports []string, force bool) {
 		if !set[it.Port] {
 			continue
 		}
-		if it.IsDocker() {
-			fmt.Printf("would stop %s (container %s) via docker stop on port %s\n", it.Process, it.PID, it.Port)
+		if it.IsContainer() {
+			fmt.Printf("would stop %s (container %s) via %s stop on port %s\n", it.Process, it.PID, runtimeOf(it.Source), it.Port)
 		} else {
 			fmt.Printf("would stop %s (PID %s) via %s on port %s\n", it.Process, it.PID, verb, it.Port)
 		}
@@ -281,8 +281,8 @@ func dryRunKill(ports []string, force bool) {
 // process is only signalled when its kernel start time still matches the one
 // captured during the scan, so a recycled PID cannot be killed by mistake.
 func stopItem(it PortItem, force bool) error {
-	if it.IsDocker() {
-		return StopContainer(it.PID)
+	if it.IsContainer() {
+		return StopContainer(it)
 	}
 	pid, err := strconv.Atoi(it.PID)
 	if err != nil {

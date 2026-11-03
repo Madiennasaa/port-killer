@@ -42,7 +42,7 @@ func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 		if seen[it.PID] {
 			continue
 		}
-		if !it.IsDocker() {
+		if !it.IsContainer() {
 			if systemProcs[it.Process] {
 				continue
 			}
@@ -61,7 +61,7 @@ func projectTargets(g Group, uidOf func(pid int) (int, bool)) []PortItem {
 // projectSummary (pure): counts of host processes and containers.
 func projectSummary(targets []PortItem) (host, docker int) {
 	for _, t := range targets {
-		if t.IsDocker() {
+		if t.IsContainer() {
 			docker++
 		} else {
 			host++

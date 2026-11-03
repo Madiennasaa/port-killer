@@ -136,14 +136,14 @@ func withFakeDockerOK(t *testing.T) {
 
 func TestStopContainerFakeSuccess(t *testing.T) {
 	withFakeDockerOK(t)
-	if err := StopContainer("abc"); err != nil {
+	if err := StopContainer(PortItem{PID: "abc", Source: "docker"}); err != nil {
 		t.Fatalf("fake docker stop: %v", err)
 	}
 }
 
 func TestRestartOneDockerFakeSuccess(t *testing.T) {
 	withFakeDockerOK(t)
-	if err := restartOne(Restartable{Docker: true, ID: "abc", Name: "web"}); err != nil {
+	if err := restartOne(Restartable{Container: true, ID: "abc", Name: "web"}); err != nil {
 		t.Fatalf("fake docker start: %v", err)
 	}
 }

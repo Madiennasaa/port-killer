@@ -33,9 +33,10 @@ func parseGuard(data string) []Rule {
 	return out
 }
 
-// ownerMatches (pure): owner matches the process name (without "docker:") or project.
+// ownerMatches (pure): owner matches the process or container name (without
+// its runtime prefix) or the project.
 func ownerMatches(it PortItem, owner string) bool {
-	name := strings.TrimPrefix(it.Process, "docker:")
+	name := containerName(it)
 	o := strings.ToLower(owner)
 	return strings.ToLower(name) == o || strings.ToLower(it.Project) == o
 }
