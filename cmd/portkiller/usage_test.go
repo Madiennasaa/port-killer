@@ -126,3 +126,34 @@ func TestDetailLinesShowCPU(t *testing.T) {
 		t.Errorf("unenriched detail line = %q, want CPU: -", l)
 	}
 }
+
+func TestProcUptimeSecFallbacks(t *testing.T) {
+	old := procFile
+	t.Cleanup(func() { procFile = old })
+	for name, read := range map[string]func(string) ([]byte, error){
+		"unreadable": func(string) ([]byte, error) { return nil, errGone },
+		"empty":      func(string) ([]byte, error) { return []byte(""), nil },
+		"garbage":    func(string) ([]byte, error) { return []byte("abc 1.0"), nil },
+	} {
+		procFile = read
+		if got := procUptimeSec(); got != 0 {
+			t.Errorf("%s: procUptimeSec = %f, want 0", name, got)
+		}
+	}
+	procFile = func(string) ([]byte, error) { return []byte("123.5 99.0"), nil }
+	if got := procUptimeSec(); got != 123.5 {
+		t.Errorf("procUptimeSec = %f, want 123.5", got)
+	}
+}
+
+func TestParseUsageMalformedNumbers(t *testing.T) {
+	if _, _, _, ok := parseUsageStat([]byte("1 (x) S 1 2 3 4 5 6 7 8 9 10 abc 100 6 7 60 61 62 63 12345")); ok {
+		t.Error("non-numeric utime must fail")
+	}
+	if _, _, _, ok := parseUsageStat([]byte("1 (x) S 1 2")); ok {
+		t.Error("short stat must fail")
+	}
+	if _, ok := parseStatm([]byte("100 abc")); ok {
+		t.Error("non-numeric rss must fail")
+	}
+}
