@@ -165,7 +165,7 @@ func TestDryRunKillForceScanWarnAndSkipOtherPorts(t *testing.T) {
 		}, errors.New("ss down")
 	}
 	t.Cleanup(func() { activePorts = old })
-	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, true) })
+	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, nil, "SIGKILL") })
 	if !strings.Contains(out, "SIGKILL") || !strings.Contains(out, "PID 42") {
 		t.Errorf("dry run output wrong:\n%s", out)
 	}
@@ -283,7 +283,7 @@ func TestCLIListJSONMarshalErrorExits(t *testing.T) {
 	var code int
 	exitProcess = func(c int) { code = c }
 	t.Cleanup(func() { marshalPorts, exitProcess = oldMarshal, oldExit })
-	cliList(true)
+	cliList(true, false)
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1 (marshal failed)", code)
 	}
@@ -313,7 +313,7 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestCLIListJSONEmptyIsArray(t *testing.T) {
 	// No listeners: --json must still print a JSON array, never "null".
 	stubActivePorts(t, []PortItem{})
-	out := captureStdout(t, func() { cliList(true) })
+	out := captureStdout(t, func() { cliList(true, false) })
 	if strings.TrimSpace(out) != "[]" {
 		t.Errorf("json = %q, want []", strings.TrimSpace(out))
 	}
@@ -326,7 +326,7 @@ func TestCLIListTextPrintsOneRowPerListener(t *testing.T) {
 		{Proto: "tcp", Addr: "127.0.0.1", Port: "8080", PID: "42", Project: "demo", Process: "node"},
 		{Proto: "tcp", Addr: "::1", Port: "9090", PID: "43", Project: "demo", Process: "go"},
 	})
-	out := captureStdout(t, func() { cliList(false) })
+	out := captureStdout(t, func() { cliList(false, false) })
 	for _, want := range []string{"8080", "node", "9090", "go"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("table is missing %q:\n%s", want, out)
@@ -344,7 +344,7 @@ func TestCLIListScanErrorStillLists(t *testing.T) {
 	}
 	t.Cleanup(func() { activePorts = old })
 
-	out := captureStdout(t, func() { cliList(false) })
+	out := captureStdout(t, func() { cliList(false, false) })
 	if !strings.Contains(out, "3000") {
 		t.Errorf("partial results must still be listed, got %q", out)
 	}
@@ -439,7 +439,7 @@ func TestCLIKillDryRunDoesNotStop(t *testing.T) {
 		{Proto: "tcp", Port: "3000", PID: "7", Process: "web", Source: "docker"},
 	}
 	stubActivePorts(t, items)
-	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, false) })
+	out := captureStdout(t, func() { dryRunKill([]string{"3000"}, nil, "SIGTERM") })
 	if !strings.Contains(out, "PID 42") || !strings.Contains(out, "container 7") || !strings.Contains(out, "docker") {
 		t.Errorf("dry run output missing targets/docker marker:\n%s", out)
 	}
@@ -451,7 +451,7 @@ func TestCLIKillDryRunNothingListeningExitsOne(t *testing.T) {
 	var code int
 	exitProcess = func(c int) { code = c }
 	t.Cleanup(func() { exitProcess = old })
-	dryRunKill([]string{"1"}, false)
+	dryRunKill([]string{"1"}, nil, "SIGTERM")
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1 (nothing listening)", code)
 	}

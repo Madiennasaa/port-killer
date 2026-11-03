@@ -9,8 +9,8 @@ import (
 // cliFlags is the one place that knows every CLI flag; the help text and all
 // three completion scripts share it so completions cannot drift from reality.
 var cliFlags = []string{
-	"--help", "--version", "--list", "--json", "--kill", "--force",
-	"--dry-run", "--free", "--watch", "--notify", "--history", "--port",
+	"--help", "--version", "--list", "--json", "--plain", "--kill",
+	"--kill-name", "--force", "--signal", "--wait", "--dry-run", "--free", "--watch", "--notify", "--history", "--port",
 	"--limit", "--completions",
 }
 
@@ -22,13 +22,17 @@ _portkiller() {
 	local cur prev
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	local flags="--help --version --list --json --kill --force --dry-run --free --watch --notify --history --port --limit --completions"
+	local flags="--help --version --list --json --plain --kill --kill-name --force --signal --wait --dry-run --free --watch --notify --history --port --limit --completions"
 	case "$prev" in
 		--completions)
 			COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
 			return
 			;;
-		--port|--limit)
+		--signal)
+			COMPREPLY=( $(compgen -W "HUP INT QUIT KILL USR1 USR2 TERM STOP CONT" -- "$cur") )
+			return
+			;;
+		--port|--limit|--wait|--kill-name)
 			return
 			;;
 	esac
@@ -44,8 +48,9 @@ complete -F _portkiller portkiller
 _portkiller() {
 	local -a flags shells
 	flags=('--help[show help]' '--version[print version]' '--list[list listeners]'
-		'--json[machine-readable output]' '--kill[stop listeners by port]'
-		'--force[use SIGKILL instead of SIGTERM]' '--dry-run[preview the kill without stopping]'
+		'--json[machine-readable output]' '--plain[tab-separated list output]' '--kill[stop listeners by port]'
+		'--kill-name[stop listeners by process name]' '--force[use SIGKILL instead of SIGTERM]'
+		'--signal[send one signal instead]:signal:(HUP INT QUIT KILL USR1 USR2 TERM STOP CONT)' '--wait[wait until the ports are free]' '--dry-run[preview the kill without stopping]'
 		'--free[print the first free port in a range]' '--watch[tail port events until Ctrl+C]' '--notify[notify on watch events]' '--history[show appear/vanished events]'
 		'--port[filter history by port]' '--limit[limit history results]' '--completions[print a completion script]')
 	shells=(bash zsh fish)
@@ -59,8 +64,12 @@ complete -c portkiller -l help -f -d 'show help'
 complete -c portkiller -l version -f -d 'print version'
 complete -c portkiller -l list -f -d 'list listeners'
 complete -c portkiller -l json -f -d 'machine-readable output'
+complete -c portkiller -l plain -f -d 'tab-separated list output'
 complete -c portkiller -l kill -F -d 'stop listeners by port'
+complete -c portkiller -l kill-name -x -d 'stop listeners by process name'
 complete -c portkiller -l force -f -d 'use SIGKILL instead of SIGTERM'
+complete -c portkiller -l signal -x -a 'HUP INT QUIT KILL USR1 USR2 TERM STOP CONT' -d 'send one signal instead'
+complete -c portkiller -l wait -x -d 'wait until the ports are free'
 complete -c portkiller -l dry-run -f -d 'preview the kill without stopping'
 complete -c portkiller -l free -F -d 'print the first free port in a range'
 complete -c portkiller -l watch -f -d 'tail port events until Ctrl+C'

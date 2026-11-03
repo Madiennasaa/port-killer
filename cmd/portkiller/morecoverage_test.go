@@ -1949,7 +1949,7 @@ func TestCLIListJSONHelper(t *testing.T) {
 	if os.Getenv("PORTKILLER_CLI_LIST_JSON") != "1" {
 		t.Skip("helper only")
 	}
-	cliList(true)
+	cliList(true, false)
 }
 
 // ---- askStopProject early-return and group-skip branches ----

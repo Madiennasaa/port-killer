@@ -86,10 +86,14 @@ MIT
     portkiller --version         # version stamp
     portkiller --list            # table output
     portkiller --list --json     # machine-readable
+    portkiller --list --plain    # tab-separated, for cut/awk
     portkiller --kill 8765       # SIGTERM, then SIGKILL after 3s; docker/systemd aware
     portkiller --kill 8765 --force
     portkiller --kill 3000 8080  # several ports in one command
     portkiller --kill 3000 --dry-run   # preview the impact, stop nothing
+    portkiller --kill-name vite  # every listener named vite (or container "vite")
+    portkiller --kill 8000 --signal HUP   # one signal, no SIGKILL escalation
+    portkiller --kill 3000 --wait && npm run dev   # block until 3000 is free (10s, or --wait N)
     portkiller --free 3000-3010  # first bindable port in the range
     portkiller --free 3000-3010 --json
     portkiller --history         # recent appear/vanished events, newest first

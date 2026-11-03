@@ -18,8 +18,10 @@ matches the scan, so a recycled PID cannot be killed by mistake.
 Running with no flags starts the interactive TUI.
 .SH OPTIONS
 .TP
-.BR \-\-list " [\\" \-\-json " \|]"
-Print a table of all listeners; \-\-json emits machine-readable JSON.
+.BR \-\-list " [" \-\-json " | " \-\-plain ]
+Print a table of all listeners; \-\-json emits machine-readable JSON and
+\-\-plain tab-separated fields (proto, address, port, pid, project,
+process, source; "\-" for an empty field).
 .TP
 .BI \-\-kill " PORT..."
 Stop everything listening on the given port(s). Multiple ports may be
@@ -28,6 +30,21 @@ given in one command. A container is stopped via \fIdocker stop\fP or
 systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM.
 Retry with \fI--force\fP to escalate to SIGKILL if the PID is still
 alive after 3 seconds.
+.TP
+.BI \-\-kill\-name " NAME..."
+Stop every listener whose process name, or container name, is
+\fINAME\fP. May be combined with \fI--kill\fP.
+.TP
+.BI \-\-signal " SIG"
+With \fI--kill\fP or \fI--kill-name\fP: send the one signal \fISIG\fP
+(HUP, INT, QUIT, KILL, USR1, USR2, TERM, STOP, CONT, or a number) instead
+of SIGTERM-then-SIGKILL. Containers get it through \fIdocker kill\fP or
+\fIpodman kill\fP, systemd units through \fIsystemctl kill\fP. Cannot be
+combined with \fI--force\fP.
+.TP
+.BR \-\-wait " [\\fISECONDS\\fP]"
+After stopping, wait until the stopped ports have no listener (10 seconds
+unless given) and exit 1 if one is still taken.
 .TP
 .B \-\-dry\-run
 With \fI--kill\fP: print one line per listener showing what would be
@@ -41,6 +58,7 @@ Print recent appear/vanished events from the events log, newest first.
 .TP
 .BI \-\-completions " SHELL"
 Print a completion script for \fIbash\fP, \fIzsh\fP or \fIfish\fP.
+.TP
 .BR \ \-\-help ", " \-\-version
 Show help or version information. These run without sudo.
 .SH EXIT CODES
@@ -49,8 +67,8 @@ Show help or version information. These run without sudo.
 Success.
 .TP
 .B 1
-Nothing stopped, at least one stop failed, or a requested port has no
-listener.
+Nothing stopped, at least one stop failed, a requested port or name has
+no listener, or a port was still taken after \fI--wait\fP.
 .TP
 .B 2
 Bad or unknown argument.

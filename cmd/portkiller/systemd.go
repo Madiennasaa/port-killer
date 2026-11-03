@@ -83,10 +83,10 @@ func sameExe(a, b int) bool {
 	return err == nil && ea == eb
 }
 
-// systemctl runs an action against a unit and surfaces systemd's own message on
-// failure.
-func systemctl(action, unit string) error {
-	out, err := commandCombined(systemctlBin, action, unit)
+// systemctl runs a systemctl subcommand (e.g. stop UNIT) and surfaces
+// systemd's own message on failure.
+func systemctl(args ...string) error {
+	out, err := commandCombined(systemctlBin, args...)
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}
