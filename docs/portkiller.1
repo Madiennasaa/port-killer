@@ -38,6 +38,16 @@ good, since the manager may start it again.
 Stop every listener whose process name, or container name, is
 \fINAME\fP. May be combined with \fI--kill\fP.
 .TP
+.BI \-\-restart " PORT..."
+Stop the listeners on the given port(s) (or \fI--kill-name\fP), wait until
+the ports are free (10 seconds unless \fI--wait\fP gives another limit),
+then start the same command line again in its original directory and
+environment, logging to
+\fI~/.local/state/portkiller/restart-NAME.log\fP. systemd units are
+restarted with \fIsystemctl restart\fP and containers with \fIstart\fP.
+Nothing is stopped when a target cannot be relaunched or is owned by a
+process manager. Accepts \fI--force\fP, \fI--signal\fP and \fI--dry-run\fP.
+.TP
 .BI \-\-signal " SIG"
 With \fI--kill\fP or \fI--kill-name\fP: send the one signal \fISIG\fP
 (HUP, INT, QUIT, KILL, USR1, USR2, TERM, STOP, CONT, or a number) instead
@@ -61,8 +71,8 @@ Print recent appear/vanished events from the events log, newest first.
 .TP
 .BR \-\-mcp " [\\fI\-\-allow\-kill\\fP]"
 Serve the Model Context Protocol on stdin/stdout for AI agents, with the
-tools list_ports, free_port, port_history and stop_port. stop_port only
-previews unless \fI--allow-kill\fP is given. Runs with the caller's
+tools list_ports, free_port, port_history, stop_port and restart_port.
+stop_port and restart_port only preview unless \fI--allow-kill\fP is given. Runs with the caller's
 privileges and never re-executes under sudo.
 .TP
 .BI \-\-completions " SHELL"
@@ -77,7 +87,8 @@ Success.
 .TP
 .B 1
 Nothing stopped, at least one stop failed, a requested port or name has
-no listener, or a port was still taken after \fI--wait\fP.
+no listener, a port was still taken after \fI--wait\fP, or a
+\fI--restart\fP target could not be relaunched.
 .TP
 .B 2
 Bad or unknown argument.

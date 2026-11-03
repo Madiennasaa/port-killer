@@ -166,7 +166,7 @@ func (m model) matchesFilter(it PortItem, lowerFilter string) bool {
 	if lowerFilter == "" {
 		return true
 	}
-	hay := it.Port + " " + it.Process + " " + it.PID + " " + it.Addr + " " + it.Proto + " " + it.Project + " " + it.Branch
+	hay := it.Port + " " + it.Process + " " + it.PID + " " + it.Addr + " " + it.Proto + " " + it.Project + " " + it.Branch + " " + it.Framework
 	if it.Cwd != "-" && it.Cwd != "" {
 		hay += " " + it.Cwd
 	}

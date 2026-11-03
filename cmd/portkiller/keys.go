@@ -229,7 +229,7 @@ func (m model) restartKey(key string) (model, tea.Cmd, bool) {
 		return m, nil, true
 	}
 	m.busy = true
-	m.message, m.isErr = "Restarting: "+restartDesc(m.restarts[0])+"...", false
+	m.message, m.isErr = "Restarting: "+restartLabel(m.restarts[0])+" — "+restartDesc(m.restarts[0])+"...", false
 	return m, restartCmd(m.restarts), true
 }
 

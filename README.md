@@ -13,6 +13,8 @@ Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 - **Orphan detector**: TCP, no tty, parent PID 1/systemd, belongs to a project
 - **Blast radius**: the kill dialog shows connections, clients, and child processes
 - **Respawn warning**: a listener run by pm2, supervisord, nodemon, forever, runit or s6 is flagged in the kill dialog and by `--kill`/`--dry-run`, with the command that stops it for good (`pm2 stop 3`, `supervisorctl stop web`)
+- **Framework detection**: Vite, Next.js, Nuxt, Astro, Angular, webpack, Django, Flask, Uvicorn, Gunicorn, Rails, Laravel, Phoenix, Hugo, `go run` and more, read from the command line; shown in the detail panel, `--json` and MCP, and matched by the search filter
+- **Smart restart**: `--restart 5173` (or `R` in the TUI) stops a dev server, waits until its port is really free, then relaunches the same command in the same directory and environment. It refuses, stopping nothing, when the command line is unreadable or a process manager owns the process
 - **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause
@@ -96,6 +98,8 @@ MIT
     portkiller --kill-name vite  # every listener named vite (or container "vite")
     portkiller --kill 8000 --signal HUP   # one signal, no SIGKILL escalation
     portkiller --kill 3000 --wait && npm run dev   # block until 3000 is free (10s, or --wait N)
+    portkiller --restart 5173    # stop, wait for the port, relaunch the same command
+    portkiller --restart 5173 --dry-run   # show what would be relaunched
     portkiller --free 3000-3010  # first bindable port in the range
     portkiller --free 3000-3010 --json
     portkiller --history         # recent appear/vanished events, newest first
@@ -137,5 +141,6 @@ Generic client config:
 | `free_port` | First bindable TCP port in a `range` such as `3000-3010` |
 | `port_history` | Recent appear/vanished events (`port`, `limit`) |
 | `stop_port` | Stop by `ports` and/or `names` (`force`, `signal`, `dry_run`); flags pm2/supervisord-managed listeners |
+| `restart_port` | Stop and relaunch by `ports` and/or `names` (`force`, `dry_run`), waiting until the port is free |
 
-The server is read-only by default: `stop_port` only previews (`dry_run`) until you start it with `--mcp --allow-kill`. It never re-runs itself under sudo (stdio belongs to the client), so without root, listeners owned by other users show no PID.
+The server is read-only by default: `stop_port` and `restart_port` only preview (`dry_run`) until you start it with `--mcp --allow-kill`. It never re-runs itself under sudo (stdio belongs to the client), so without root, listeners owned by other users show no PID.

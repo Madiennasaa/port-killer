@@ -33,6 +33,8 @@ type Restartable struct {
 	Exe       string
 	Env       []string
 	Unit      string
+	Ports     []string // ports it listened on, waited for before relaunch
+	Framework string
 }
 
 type restartMsg struct {
@@ -58,7 +60,7 @@ func restartDesc(r Restartable) string {
 
 func captureRestart(it PortItem) (Restartable, bool) {
 	if it.IsContainer() {
-		return Restartable{Name: containerName(it), Container: true, Runtime: it.Source, CtrUser: it.ctrUser, ID: it.PID}, true
+		return Restartable{Name: containerName(it), Container: true, Runtime: it.Source, CtrUser: it.ctrUser, ID: it.PID, Ports: []string{it.Port}}, true
 	}
 	pid, err := strconv.Atoi(it.PID)
 	if err != nil {
@@ -78,7 +80,7 @@ func captureRestart(it PortItem) (Restartable, bool) {
 		// /proc vanished between reads: the process is already gone.
 		return Restartable{}, false
 	}
-	r := Restartable{Name: it.Process, Cmd: cmd, Cwd: cwd, UID: uid}
+	r := Restartable{Name: it.Process, Cmd: cmd, Cwd: cwd, UID: uid, Ports: []string{it.Port}, Framework: it.Framework}
 	r.Exe = capturedExe(it.PID)
 	r.Env = capturedEnv(it.PID)
 	if unit, ok := serviceUnit(pid); ok {
@@ -108,16 +110,38 @@ func capturedEnv(pid string) []string {
 
 // captureAll: unik per PID/container, dipanggil sebelum kill.
 func captureAll(items []PortItem) []Restartable {
-	seen := map[string]bool{}
 	var out []Restartable
+	for _, t := range captureEach(items) {
+		if t.ok {
+			out = append(out, t.r)
+		}
+	}
+	return out
+}
+
+// captured pairs a listener with what was recorded to relaunch it; ok is
+// false when it cannot be relaunched.
+type captured struct {
+	it PortItem
+	r  Restartable
+	ok bool
+}
+
+// captureEach captures once per PID/container and gathers every port that
+// PID listens on, so a relaunch waits for all of them.
+func captureEach(items []PortItem) []captured {
+	at := map[string]int{}
+	var out []captured
 	for _, it := range items {
-		if seen[it.PID] {
+		if i, ok := at[it.PID]; ok {
+			if out[i].ok && !containsArg(out[i].r.Ports, it.Port) {
+				out[i].r.Ports = append(out[i].r.Ports, it.Port)
+			}
 			continue
 		}
-		seen[it.PID] = true
-		if r, ok := captureRestart(it); ok {
-			out = append(out, r)
-		}
+		at[it.PID] = len(out)
+		r, ok := captureRestart(it)
+		out = append(out, captured{it, r, ok})
 	}
 	return out
 }
@@ -267,7 +291,7 @@ func restartCmd(rs []Restartable) tea.Cmd {
 		done := 0
 		var first error
 		for _, r := range snap {
-			if err := restartOne(r); err == nil {
+			if err := restartWhenFree(r, restartPortWait); err == nil {
 				done++
 			} else if first == nil {
 				first = err

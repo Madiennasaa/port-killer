@@ -103,8 +103,12 @@ func readDetail(it PortItem) Detail {
 
 // detailLines (pure): always detailHeight lines.
 func detailLines(it PortItem, d Detail) []string {
+	head := fmt.Sprintf(" DETAIL  %s  :%s  PID %s", it.Process, it.Port, it.PID)
+	if it.Framework != "" {
+		head += "  [" + it.Framework + "]"
+	}
 	return []string{
-		fmt.Sprintf(" DETAIL  %s  :%s  PID %s", it.Process, it.Port, it.PID),
+		head,
 		" Cmd     : " + d.Cmdline,
 		" Cwd     : " + d.Cwd + "   Branch: " + orDash(it.Branch),
 		" User    : " + d.User + "   Parent: " + d.Parent,

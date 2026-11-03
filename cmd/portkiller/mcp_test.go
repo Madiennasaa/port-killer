@@ -71,7 +71,7 @@ func TestMCPProtocol(t *testing.T) {
 	if _, ok := r[3]["result"].(map[string]any); !ok {
 		t.Errorf("ping: %v", r[3])
 	}
-	if tools := r[4]["result"].(map[string]any)["tools"].([]any); len(tools) != 4 {
+	if tools := r[4]["result"].(map[string]any)["tools"].([]any); len(tools) != 5 {
 		t.Errorf("tools: %v", tools)
 	}
 	if code(5) != -32601 || code(6) != -32602 || code(7) != -32602 {

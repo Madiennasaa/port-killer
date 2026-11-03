@@ -298,6 +298,7 @@ func enrichProject(item *PortItem) {
 	}, home)
 	item.Project = normalizeProjectName(item.Project)
 	item.Branch = gitBranch(cwd, home)
+	item.Framework = procFramework(item.PID)
 	if st, ok := procStartTime(pid); ok {
 		item.startTime = st
 	}

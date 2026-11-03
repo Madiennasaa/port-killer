@@ -20,7 +20,7 @@ func cliNeedsRoot(args []string) bool {
 	}
 	for _, a := range args {
 		switch a {
-		case "--list", "--kill", "--kill-name", "--force", "--watch":
+		case "--list", "--kill", "--kill-name", "--restart", "--force", "--watch":
 			return true
 		}
 	}
@@ -70,6 +70,8 @@ func runCLI(args []string) bool {
 		cliList(hasFlag(args, "--json"), hasFlag(args, "--plain"))
 	case hasFlag(args, "--completions"):
 		cliCompletions(args)
+	case hasFlag(args, "--restart"):
+		cliRestart(args, hasFlag(args, "--force"))
 	case hasFlag(args, "--kill") || hasFlag(args, "--kill-name"):
 		cliKill(args, hasFlag(args, "--force"))
 	default:
@@ -123,13 +125,14 @@ func killMulti(ports map[string]bool, force bool, items []PortItem, stop func(Po
 }
 
 func cliHelp() {
-	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--mcp [--allow-kill]] [--version]")
+	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--restart PORT... [--force] [--wait SECS] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--mcp [--allow-kill]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
 	fmt.Println("--kill accepts several ports and shows the impact before stopping")
 	fmt.Println("--kill-name stops every listener whose process or container has that name")
 	fmt.Println("--signal sends one signal (HUP, USR1, 15...) instead of SIGTERM-then-SIGKILL")
 	fmt.Println("--wait waits until the stopped ports are free (default 10s) and fails if they are not")
 	fmt.Println("--dry-run prints what --kill would stop without touching anything")
+	fmt.Println("--restart stops a listener and starts the same command again once its port is free")
 	fmt.Println("--plain prints --list as tab-separated fields for scripts")
 	fmt.Println("--free prints the first port that can be bound in the given range")
 	fmt.Println("--history prints recent appear/vanished events, newest first")

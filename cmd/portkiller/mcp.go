@@ -17,8 +17,8 @@ var mcpVersions = []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05
 
 // mcpInstructions is sent at initialize so the client model knows the limits.
 const mcpInstructions = "portkiller inspects and stops TCP/UDP listeners on this Linux machine. " +
-	"Use list_ports to see who holds a port, free_port to pick an unused one and " +
-	"stop_port with dry_run first. Real stops only work when the server was started " +
+	"Use list_ports to see who holds a port, free_port to pick an unused one, " +
+	"stop_port or restart_port with dry_run first. Real stops only work when the server was started " +
 	"with --allow-kill. Without root, listeners of other users show no PID."
 
 type rpcRequest struct {
@@ -193,6 +193,16 @@ func mcpTools() []map[string]any {
 			}),
 			"annotations": map[string]any{"destructiveHint": true},
 		},
+		{
+			"name": "restart_port",
+			"description": "Restart the listeners on the given ports and/or names: stop them, wait until the port is free, then run " +
+				"the same command line again in the same directory and environment (systemd units via systemctl, containers via start). " +
+				"Refuses, stopping nothing, when a target cannot be relaunched or a process manager owns it. Needs --allow-kill unless dry_run.",
+			"inputSchema": schema(map[string]any{
+				"ports": strsProp, "names": strsProp, "force": boolProp, "dry_run": boolProp,
+			}),
+			"annotations": map[string]any{"destructiveHint": true},
+		},
 	}
 }
 
@@ -226,6 +236,8 @@ func (s mcpServer) callTool(name string, raw json.RawMessage) (any, error) {
 		return map[string]any{"events": historyEvents(loadEvents(eventsPath()), a.Port, a.Limit)}, nil
 	case "stop_port":
 		return s.toolStopPort(a.Ports, a.Names, a.Force, a.Signal, a.DryRun)
+	case "restart_port":
+		return s.toolRestartPort(a.Ports, a.Names, a.Force, a.DryRun)
 	}
 	return nil, fmt.Errorf("%w %q", errUnknownTool, name)
 }
@@ -322,6 +334,32 @@ func (s mcpServer) toolStopPort(ports, names []string, force bool, signal string
 			}
 		}
 		results = append(results, o)
+	}
+	res := map[string]any{"results": results}
+	missing := append(missingPorts(ports, items), missingKeys(names, items, containerName)...)
+	if len(missing) > 0 {
+		res["no_listener"] = missing
+	}
+	return res, nil
+}
+
+// toolRestartPort mirrors --restart without printing.
+func (s mcpServer) toolRestartPort(ports, names []string, force, dryRun bool) (any, error) {
+	if len(ports) == 0 && len(names) == 0 {
+		return nil, errors.New("give ports and/or names")
+	}
+	for _, p := range ports {
+		if _, err := parsePort(p); err != nil {
+			return nil, err
+		}
+	}
+	if !dryRun && !s.allowKill {
+		return nil, errors.New("restarting is disabled: restart the server as `portkiller --mcp --allow-kill`, or pass dry_run")
+	}
+	items, _ := activePorts()
+	results, err := restartTargets(selectTargets(ports, names, items), force, stopItem, defaultWait, dryRun)
+	if err != nil {
+		return nil, err
 	}
 	res := map[string]any{"results": results}
 	missing := append(missingPorts(ports, items), missingKeys(names, items, containerName)...)
