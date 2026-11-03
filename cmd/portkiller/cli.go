@@ -14,7 +14,7 @@ import (
 func cliNeedsRoot(args []string) bool {
 	for _, a := range args {
 		switch a {
-		case "--help", "-h", "--version", "-v", "--completions":
+		case "--help", "-h", "--version", "-v", "--completions", "--mcp":
 			return false
 		}
 	}
@@ -46,6 +46,7 @@ func hasFlag(args []string, f string) bool {
 //	portkiller --kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]
 //	portkiller --free START-END [--json]
 //	portkiller --history [--port N] [--limit N] [--json]
+//	portkiller --mcp [--allow-kill]
 //	portkiller --help
 //	portkiller --version
 func runCLI(args []string) bool {
@@ -57,6 +58,8 @@ func runCLI(args []string) bool {
 		cliHelp()
 	case hasFlag(args, "--version") || hasFlag(args, "-v"):
 		cliVersion()
+	case hasFlag(args, "--mcp"):
+		cliMCP(args)
 	case hasFlag(args, "--history"):
 		cliHistory(args, hasFlag(args, "--json"))
 	case hasFlag(args, "--free"):
@@ -120,7 +123,7 @@ func killMulti(ports map[string]bool, force bool, items []PortItem, stop func(Po
 }
 
 func cliHelp() {
-	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--version]")
+	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--mcp [--allow-kill]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
 	fmt.Println("--kill accepts several ports and shows the impact before stopping")
 	fmt.Println("--kill-name stops every listener whose process or container has that name")
@@ -131,6 +134,8 @@ func cliHelp() {
 	fmt.Println("--free prints the first port that can be bound in the given range")
 	fmt.Println("--history prints recent appear/vanished events, newest first")
 	fmt.Println("--watch tails port appear/vanish/guard events until Ctrl+C; add --notify for desktop notifications")
+	fmt.Println("--mcp serves the Model Context Protocol on stdio for AI agents (read-only")
+	fmt.Println("  plus stop previews); add --allow-kill to let the agent stop listeners")
 	fmt.Println("--completions prints a completion script; source it or place it")
 	fmt.Println("  in your shell's completion directory (fish: ~/.config/fish/completions/portkiller.fish)")
 }

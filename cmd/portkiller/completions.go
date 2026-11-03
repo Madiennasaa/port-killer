@@ -11,7 +11,7 @@ import (
 var cliFlags = []string{
 	"--help", "--version", "--list", "--json", "--plain", "--kill",
 	"--kill-name", "--force", "--signal", "--wait", "--dry-run", "--free", "--watch", "--notify", "--history", "--port",
-	"--limit", "--completions",
+	"--limit", "--completions", "--mcp", "--allow-kill",
 }
 
 // completionScripts holds the raw completion source per supported shell.
@@ -22,7 +22,7 @@ _portkiller() {
 	local cur prev
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	local flags="--help --version --list --json --plain --kill --kill-name --force --signal --wait --dry-run --free --watch --notify --history --port --limit --completions"
+	local flags="--help --version --list --json --plain --kill --kill-name --force --signal --wait --dry-run --free --watch --notify --history --port --limit --completions --mcp --allow-kill"
 	case "$prev" in
 		--completions)
 			COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
@@ -52,7 +52,8 @@ _portkiller() {
 		'--kill-name[stop listeners by process name]' '--force[use SIGKILL instead of SIGTERM]'
 		'--signal[send one signal instead]:signal:(HUP INT QUIT KILL USR1 USR2 TERM STOP CONT)' '--wait[wait until the ports are free]' '--dry-run[preview the kill without stopping]'
 		'--free[print the first free port in a range]' '--watch[tail port events until Ctrl+C]' '--notify[notify on watch events]' '--history[show appear/vanished events]'
-		'--port[filter history by port]' '--limit[limit history results]' '--completions[print a completion script]')
+		'--port[filter history by port]' '--limit[limit history results]' '--completions[print a completion script]'
+		'--mcp[serve MCP on stdio for AI agents]' '--allow-kill[let MCP clients stop listeners]')
 	shells=(bash zsh fish)
 	if [[ ${words[2]} == --completions ]]; then _ describe -t shells shell shells; fi
 	_arguments $flags
@@ -78,6 +79,8 @@ complete -c portkiller -l history -f -d 'show appear/vanished events'
 complete -c portkiller -l port -F -d 'filter history by port'
 complete -c portkiller -l limit -f -a '(seq 1 100)' -d 'limit history results'
 complete -c portkiller -l completions -a 'bash zsh fish' -d 'print a completion script'
+complete -c portkiller -l mcp -f -d 'serve MCP on stdio for AI agents'
+complete -c portkiller -l allow-kill -f -d 'let MCP clients stop listeners'
 `,
 }
 

@@ -118,3 +118,24 @@ Unknown flags exit with status 2 instead of silently starting the TUI.
 `--help`, `--version`, `--free` and `--history` run without a sudo prompt.
 `--free` checks TCP bindability, so ranges below 1024 need root (`sudo
 portkiller --free 80-90`).
+
+## MCP server (AI agents)
+
+`portkiller --mcp` speaks the [Model Context Protocol](https://modelcontextprotocol.io) on stdio, so Claude Code, Cursor and other MCP clients can ask "who is on port 3000?" or "give me a free port" directly:
+
+    claude mcp add portkiller -- portkiller --mcp
+
+Generic client config:
+
+```json
+{ "mcpServers": { "portkiller": { "command": "portkiller", "args": ["--mcp"] } } }
+```
+
+| Tool | What it does |
+|------|--------------|
+| `list_ports` | Listeners with process, PID, project, branch, container; optional `port` / `process` / `proto` filters |
+| `free_port` | First bindable TCP port in a `range` such as `3000-3010` |
+| `port_history` | Recent appear/vanished events (`port`, `limit`) |
+| `stop_port` | Stop by `ports` and/or `names` (`force`, `signal`, `dry_run`); flags pm2/supervisord-managed listeners |
+
+The server is read-only by default: `stop_port` only previews (`dry_run`) until you start it with `--mcp --allow-kill`. It never re-runs itself under sudo (stdio belongs to the client), so without root, listeners owned by other users show no PID.

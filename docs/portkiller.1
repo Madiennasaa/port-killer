@@ -59,6 +59,12 @@ Print the first bindable TCP port in the range.
 .BR \-\-history " [\\fI\-\-port\fP N] [\\fI\-\-limit\fP N] [\-\-json]"
 Print recent appear/vanished events from the events log, newest first.
 .TP
+.BR \-\-mcp " [\\fI\-\-allow\-kill\\fP]"
+Serve the Model Context Protocol on stdin/stdout for AI agents, with the
+tools list_ports, free_port, port_history and stop_port. stop_port only
+previews unless \fI--allow-kill\fP is given. Runs with the caller's
+privileges and never re-executes under sudo.
+.TP
 .BI \-\-completions " SHELL"
 Print a completion script for \fIbash\fP, \fIzsh\fP or \fIfish\fP.
 .TP
