@@ -46,6 +46,75 @@ func TestServiceUnit(t *testing.T) {
 	if _, ok := serviceUnit(4242); ok {
 		t.Error("unreadable cgroup must fail")
 	}
+	procFile = func(string) ([]byte, error) { return []byte("0::/user.slice/user-1000.slice/session-2.scope\n"), nil }
+	if _, ok := serviceUnit(4242); ok {
+		t.Error("a session process is not a service")
+	}
+}
+
+// stubUnitMain pins the unit's MainPID and the exe of each pid.
+func stubUnitMain(t *testing.T, main int, mainOK bool, exes map[string]string) {
+	t.Helper()
+	oldFile, oldMain, oldLink := procFile, unitMainPID, readProcLink
+	t.Cleanup(func() { procFile, unitMainPID, readProcLink = oldFile, oldMain, oldLink })
+	procFile = func(string) ([]byte, error) { return []byte("0::/system.slice/runner.service\n"), nil }
+	unitMainPID = func(string) (int, bool) { return main, mainOK }
+	readProcLink = func(p string) (string, error) {
+		if e, ok := exes[p]; ok {
+			return e, nil
+		}
+		return "", errors.New("gone")
+	}
+}
+
+func TestServiceUnitMainPIDAndWorkers(t *testing.T) {
+	stubUnitMain(t, 100, true, map[string]string{
+		"/proc/100/exe": "/usr/bin/nginx", "/proc/101/exe": "/usr/bin/nginx", "/proc/200/exe": "/usr/bin/sleep",
+	})
+	if u, ok := serviceUnit(100); !ok || u != "runner.service" {
+		t.Errorf("main pid: %q %v", u, ok)
+	}
+	if _, ok := serviceUnit(101); !ok {
+		t.Error("a worker running the service binary belongs to the unit")
+	}
+	if _, ok := serviceUnit(200); ok {
+		t.Error("a child spawned by the service must be signalled, not the unit stopped")
+	}
+	if _, ok := serviceUnit(300); ok {
+		t.Error("an unreadable exe must not be treated as the service")
+	}
+}
+
+func TestServiceUnitWithoutSystemd(t *testing.T) {
+	stubUnitMain(t, 0, false, nil)
+	if u, ok := serviceUnit(200); !ok || u != "runner.service" {
+		t.Errorf("unknown MainPID keeps the unit: %q %v", u, ok)
+	}
+}
+
+func TestParseMainPID(t *testing.T) {
+	if n, ok := parseMainPID([]byte("1234\n")); !ok || n != 1234 {
+		t.Errorf("parseMainPID = %d %v", n, ok)
+	}
+	for _, in := range []string{"0\n", "", "abc"} {
+		if _, ok := parseMainPID([]byte(in)); ok {
+			t.Errorf("parseMainPID(%q) must fail", in)
+		}
+	}
+}
+
+func TestUnitMainPIDViaSystemctl(t *testing.T) {
+	args := stubSystemctl(t, 0, "4321")
+	if n, ok := unitMainPID("nginx.service"); !ok || n != 4321 {
+		t.Errorf("unitMainPID = %d %v", n, ok)
+	}
+	if b, _ := os.ReadFile(args); strings.TrimSpace(string(b)) != "show -p MainPID --value nginx.service" {
+		t.Errorf("argv = %q", b)
+	}
+	stubSystemctl(t, 1, "")
+	if _, ok := unitMainPID("nginx.service"); ok {
+		t.Error("systemctl failure must report !ok")
+	}
 }
 
 // stubSystemctl installs a fake systemctl that records its argv and exits with

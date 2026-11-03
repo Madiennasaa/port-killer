@@ -44,13 +44,16 @@ func TestKillOrphansCmdEndToEnd(t *testing.T) {
 		{Proto: "udp", Port: "19991", PID: pid, Process: "sleep", Orphan: true, Source: "host"},
 		{Proto: "tcp", Port: "19992", PID: "deadbeef", Process: "docker:web", Orphan: true, Source: "docker"},
 	})
+	// Failure paths reap the child: a zombie left behind would show up as a
+	// child of the test binary and break later blast-radius tests.
+	reap := func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }
 	if len(targets) != 1 {
-		cmd.Process.Kill()
+		reap()
 		t.Fatalf("dedup/filter docker gagal: %+v", targets)
 	}
 	msg := killOrphansCmd(targets)().(orphansMsg)
 	if msg.done != 1 || msg.err != nil {
-		cmd.Process.Kill()
+		reap()
 		t.Fatalf("got %+v", msg)
 	}
 	done := make(chan error, 1)
