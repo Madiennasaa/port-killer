@@ -8,6 +8,7 @@ Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 - **Container-aware**: Docker and Podman containers are stopped with `docker stop` / `podman stop`, not by killing `docker-proxy` or `rootlessport`. Under sudo, the invoking user's rootless Podman containers are listed too and stopped as that user
 - **Multi-owner aware**: a socket shared by several processes is listed once per PID
 - **Project-aware**: PROJECT column from the process cwd plus markers (`.git`, `go.mod`, `composer.json`, `package.json`)
+- **Git branch**: BRANCH column (140+ columns wide) and detail line read straight from `.git/HEAD`, worktrees included; the search filter matches it too
 - **Health check**: parallel TCP dial per port
 - **Orphan detector**: TCP, no tty, parent PID 1/systemd, belongs to a project
 - **Blast radius**: the kill dialog shows connections, clients, and child processes

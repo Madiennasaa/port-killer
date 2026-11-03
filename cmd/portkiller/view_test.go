@@ -52,10 +52,14 @@ func TestHealthText(t *testing.T) {
 }
 
 func TestRowTextResponsiveColumns(t *testing.T) {
-	args := []string{" ", "tcp", "0.0.0.0", "3000", "1234", "1d 02h", "myapp", "● <1ms", "node"}
-	narrow := model{width: 60}.rowText(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
-	mid := model{width: 90}.rowText(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
-	wide := model{width: 130}.rowText(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8])
+	args := []string{" ", "tcp", "0.0.0.0", "3000", "1234", "1d 02h", "myapp", "feat/x", "● <1ms", "node"}
+	row := func(w int) string {
+		return model{width: w}.rowText(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9])
+	}
+	narrow, mid, wide, widest := row(60), row(90), row(130), row(150)
+	if strings.Contains(wide, "feat/x") || !strings.Contains(widest, "feat/x") {
+		t.Errorf("branch column must appear only from 140 columns: %q", widest)
+	}
 
 	if strings.Contains(narrow, "HEALTH") || strings.Contains(narrow, "myapp") {
 		t.Errorf("narrow row must hide optional columns: %q", narrow)

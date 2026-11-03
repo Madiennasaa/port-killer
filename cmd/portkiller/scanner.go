@@ -17,6 +17,7 @@ type PortItem struct {
 	Source  string
 	Cwd     string
 	Project string
+	Branch  string // git branch (or short commit) of the project, "" outside a repo
 	Health  HealthStatus
 	Latency time.Duration
 	Orphan  bool
@@ -133,7 +134,7 @@ func parseSS(out string) []PortItem {
 
 // enrichAll fills project/cwd and the orphan flag, caching per pid.
 func enrichAll(items []PortItem) {
-	cache := make(map[string][2]string) // pid -> {cwd, project}
+	cache := make(map[string][3]string) // pid -> {cwd, project, branch}
 	orphanCache := map[string]bool{}
 	for i := range items {
 		if items[i].IsContainer() {
@@ -142,10 +143,10 @@ func enrichAll(items []PortItem) {
 			continue
 		}
 		if v, ok := cache[items[i].PID]; ok {
-			items[i].Cwd, items[i].Project = v[0], v[1]
+			items[i].Cwd, items[i].Project, items[i].Branch = v[0], v[1], v[2]
 		} else {
 			enrichProject(&items[i])
-			cache[items[i].PID] = [2]string{items[i].Cwd, items[i].Project}
+			cache[items[i].PID] = [3]string{items[i].Cwd, items[i].Project, items[i].Branch}
 		}
 		if v, ok := orphanCache[items[i].PID+"|"+items[i].Proto]; ok {
 			items[i].Orphan = v

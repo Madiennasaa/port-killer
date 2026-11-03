@@ -291,11 +291,13 @@ func enrichProject(item *PortItem) {
 		return
 	}
 	item.Cwd = cwd
+	home := ownerHome(pid)
 	item.Project = findProjectRootFrom(cwd, func(p string) bool {
 		_, err := os.Stat(p)
 		return err == nil
-	}, ownerHome(pid))
+	}, home)
 	item.Project = normalizeProjectName(item.Project)
+	item.Branch = gitBranch(cwd, home)
 	if st, ok := procStartTime(pid); ok {
 		item.startTime = st
 	}

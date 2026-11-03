@@ -35,7 +35,7 @@ func (m model) fullWidth(st lipgloss.Style, s string) string {
 }
 
 // rowText builds one table row; optional columns are hidden on narrow terminals.
-func (m model) rowText(mark, proto, addr, port, pid, uptime, project, health, proc string) string {
+func (m model) rowText(mark, proto, addr, port, pid, uptime, project, branch, health, proc string) string {
 	b := " " + mark + pad(proto, 6) + " " + pad(addr, 16) + " " + pad(port, 7) + " " + pad(pid, 8)
 	if m.width >= 78 {
 		b += " " + pad(health, 16)
@@ -45,6 +45,9 @@ func (m model) rowText(mark, proto, addr, port, pid, uptime, project, health, pr
 	}
 	if m.width >= 120 {
 		b += " " + pad(project, 18)
+	}
+	if m.width >= 140 {
+		b += " " + pad(branch, 16)
 	}
 	return b + " " + proc
 }
@@ -113,7 +116,7 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Column header (first column = 1-rune orphan marker + PROTO)
-	head := m.rowText(" ", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "HEALTH", "PROCESS")
+	head := m.rowText(" ", "PROTO", "ADDRESS", "PORT", "PID", "UPTIME", "PROJECT", "BRANCH", "HEALTH", "PROCESS")
 	b.WriteString(m.fullWidth(headerStyle, head) + "\n")
 
 	// Baris
@@ -138,7 +141,7 @@ func (m model) View() string {
 		case it.Orphan:
 			mark = "⚠"
 		}
-		line := m.rowText(mark, it.Proto, it.Addr, it.Port, pid, it.Uptime, it.Project, healthText(it), it.Process)
+		line := m.rowText(mark, it.Proto, it.Addr, it.Port, pid, it.Uptime, it.Project, orDash(it.Branch), healthText(it), it.Process)
 
 		st := normalStyle
 		switch {

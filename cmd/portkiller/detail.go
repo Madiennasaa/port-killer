@@ -106,7 +106,7 @@ func detailLines(it PortItem, d Detail) []string {
 	return []string{
 		fmt.Sprintf(" DETAIL  %s  :%s  PID %s", it.Process, it.Port, it.PID),
 		" Cmd     : " + d.Cmdline,
-		" Cwd     : " + d.Cwd,
+		" Cwd     : " + d.Cwd + "   Branch: " + orDash(it.Branch),
 		" User    : " + d.User + "   Parent: " + d.Parent,
 		" Memory  : " + d.Mem + "   CPU: " + orDash(it.Cpu) + "   Threads: " + d.Threads + "   Bind: " + it.Addr + "   Project: " + it.Project,
 	}
