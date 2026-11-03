@@ -107,10 +107,23 @@ func TestEnrichUsagesBatch(t *testing.T) {
 	items := []PortItem{
 		{PID: "7", Process: "go"},
 		{PID: "deadpool", Process: "x"},
+		{PID: "7", Process: "go", Port: "second socket"},
+	}
+	reads := 0
+	inner := procFile
+	procFile = func(path string) ([]byte, error) {
+		if path == "/proc/7/stat" {
+			reads++
+		}
+		return inner(path)
 	}
 	enrichUsages(items)
 	if items[0].Cpu == "" || items[0].Mem == "" {
 		t.Errorf("item 0: cpu=%q mem=%q", items[0].Cpu, items[0].Mem)
+	}
+	// A pid owning several sockets is read once and reuses the cached values.
+	if reads != 1 || items[2].Cpu != items[0].Cpu || items[2].Mem != items[0].Mem {
+		t.Errorf("cache: reads=%d item 2 = %q %q", reads, items[2].Cpu, items[2].Mem)
 	}
 	if items[1].Cpu != "-" || items[1].Mem != "-" {
 		t.Errorf("item 1: %q %q, want dashes", items[1].Cpu, items[1].Mem)
