@@ -496,24 +496,30 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.finishWork(fmt.Sprintf("Restarted: %d processes", msg.done), "", nil)
 
 	case actionMsg:
+		if msg.err != nil {
+			m.restarts = nil
+		}
 		return m.finishWork(
 			fmt.Sprintf("Stopped %s (port %s)", msg.item.Process, msg.item.Port),
 			fmt.Sprintf("Failed %s (port %s): %v", msg.item.Process, msg.item.Port, msg.err),
 			msg.err)
 
 	case projectMsg:
+		m.restarts = keepStopped(m.restarts, msg.stopped)
 		return m.finishWork(
 			fmt.Sprintf("Project %s: %d stopped", msg.project, msg.done),
 			fmt.Sprintf("Project %s: %d OK, err: %v", msg.project, msg.done, msg.err),
 			msg.err)
 
 	case batchMsg:
+		m.restarts = keepStopped(m.restarts, msg.stopped)
 		return m.finishWork(
 			fmt.Sprintf("Stopped %d selected", msg.done),
 			fmt.Sprintf("Selected: %d OK, err: %v", msg.done, msg.err),
 			msg.err)
 
 	case orphansMsg:
+		m.restarts = keepStopped(m.restarts, msg.stopped)
 		return m.finishWork(
 			fmt.Sprintf("Cleaned orphans: %d processes (SIGTERM)", msg.done),
 			fmt.Sprintf("Clean orphans: %d OK, err: %v", msg.done, msg.err),

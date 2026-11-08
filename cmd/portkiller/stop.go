@@ -84,17 +84,31 @@ func stopPID(pid int, force bool) error {
 	if force {
 		return sendSignal(pid, syscall.SIGKILL)
 	}
+	start, known := readStartTime(pid)
 	if err := sendSignal(pid, syscall.SIGTERM); err != nil {
 		return err
 	}
+	// exited also covers a PID that died and was recycled during the grace
+	// period: a different start time means the new owner is not our target
+	// and must never receive the SIGKILL.
+	exited := func() bool {
+		if procGone(pid) {
+			return true
+		}
+		if !known {
+			return false
+		}
+		cur, ok := readStartTime(pid)
+		return ok && cur != start
+	}
 	polls := int(killGrace / killPollInterval)
 	for i := 0; i < polls; i++ {
-		if procGone(pid) {
+		if exited() {
 			return nil
 		}
 		sleepFn(killPollInterval)
 	}
-	if procGone(pid) {
+	if exited() {
 		return nil
 	}
 	return sendSignal(pid, syscall.SIGKILL)

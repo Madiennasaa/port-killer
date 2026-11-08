@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,7 +10,7 @@ import (
 
 // hiddenPath holds process names the user hid from the table, one per line.
 func hiddenPath() string {
-	return filepath.Join(homeDir(), ".config", "portkiller", "hidden")
+	return homePath(".config", "portkiller", "hidden")
 }
 
 // parseHidden (pure): one name per line; "#" comments and blanks are skipped.
@@ -40,6 +41,9 @@ func saveHidden(path string, hidden map[string]bool) error {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	if path == "" {
+		return errors.New("no home directory to save hidden processes in")
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

@@ -63,7 +63,7 @@ func trimLines(s string, max int) string {
 }
 
 func eventsPath() string {
-	return filepath.Join(homeDir(), ".local", "state", "portkiller", "events.jsonl")
+	return homePath(".local", "state", "portkiller", "events.jsonl")
 }
 
 const maxEvents = 1000
@@ -74,6 +74,9 @@ var eventsFlock = syscall.Flock
 // lockEvents serializes access to the events file across processes. It is best
 // effort: nil is returned when locking is unavailable and the caller proceeds.
 func lockEvents(path string, exclusive bool) *os.File {
+	if path == "" {
+		return nil
+	}
 	f, err := openNoFollow(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil
@@ -104,7 +107,7 @@ func unlockEvents(f *os.File) {
 }
 
 func appendEvents(path string, evs []Event) {
-	if len(evs) == 0 {
+	if len(evs) == 0 || path == "" {
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

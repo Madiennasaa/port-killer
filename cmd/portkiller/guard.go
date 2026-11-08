@@ -82,8 +82,18 @@ func homeDir() string {
 	return home
 }
 
+// homePath joins parts under homeDir, or returns "" when no home is known,
+// so a failed lookup never turns into a path relative to the cwd.
+func homePath(parts ...string) string {
+	h := homeDir()
+	if h == "" {
+		return ""
+	}
+	return filepath.Join(append([]string{h}, parts...)...)
+}
+
 func guardPath() string {
-	return filepath.Join(homeDir(), ".config", "portkiller", "guard.conf")
+	return homePath(".config", "portkiller", "guard.conf")
 }
 
 func loadGuard() []Rule {

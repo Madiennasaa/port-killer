@@ -41,6 +41,7 @@ func credentialGroups(ids []string, primary uint32) []uint32 {
 // environment, so dev servers keep their PORT/DATABASE_URL settings.
 type Restartable struct {
 	Name      string
+	PID       string // scan PID (container id for containers), matched against what was stopped
 	Cmd       []string
 	Cwd       string
 	UID       int
@@ -83,7 +84,7 @@ func restartDesc(r Restartable) string {
 
 func captureRestart(it PortItem) (Restartable, bool) {
 	if it.IsContainer() {
-		return Restartable{Name: containerName(it), Container: true, Runtime: it.Source, CtrUser: it.ctrUser, ID: it.PID, Ports: []string{it.Port}}, true
+		return Restartable{Name: containerName(it), PID: it.PID, Container: true, Runtime: it.Source, CtrUser: it.ctrUser, ID: it.PID, Ports: []string{it.Port}}, true
 	}
 	pid, err := strconv.Atoi(it.PID)
 	if err != nil {
@@ -103,7 +104,7 @@ func captureRestart(it PortItem) (Restartable, bool) {
 		// /proc vanished between reads: the process is already gone.
 		return Restartable{}, false
 	}
-	r := Restartable{Name: it.Process, Cmd: cmd, Cwd: cwd, UID: uid, Ports: []string{it.Port}, Framework: it.Framework}
+	r := Restartable{Name: it.Process, PID: it.PID, Cmd: cmd, Cwd: cwd, UID: uid, Ports: []string{it.Port}, Framework: it.Framework}
 	r.Exe = capturedExe(it.PID)
 	r.Env = capturedEnv(it.PID)
 	if unit, ok := serviceUnit(pid); ok {
@@ -140,6 +141,19 @@ func captureAll(items []PortItem) []Restartable {
 	for _, t := range captureEach(items) {
 		if t.ok {
 			out = append(out, t.r)
+		}
+	}
+	return out
+}
+
+// keepStopped (pure) keeps the captures whose PID was actually stopped, so R
+// never relaunches something whose stop failed or was skipped.
+func keepStopped(rs []Restartable, stopped []string) []Restartable {
+	ok := targetSet(stopped)
+	var out []Restartable
+	for _, r := range rs {
+		if ok[r.PID] {
+			out = append(out, r)
 		}
 	}
 	return out
@@ -189,9 +203,14 @@ func safeFileName(s string) string {
 	return b.String()
 }
 
-// restartLogPath is the per-process log the restarted process writes to.
+// restartLogPath is the per-process log the restarted process writes to, or
+// "" when there is no home directory to keep it in.
 func restartLogPath(r Restartable) string {
-	return filepath.Join(filepath.Dir(eventsPath()), "restart-"+safeFileName(r.Name)+".log")
+	ev := eventsPath()
+	if ev == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(ev), "restart-"+safeFileName(r.Name)+".log")
 }
 
 // defaultOpenRestartLog creates the log file, making the state directory on
@@ -223,10 +242,11 @@ func restartBinary(r Restartable) string {
 // openLogFor attaches a log when the process has a usable name. A logging
 // failure must never block the restart.
 func openLogFor(r Restartable) *os.File {
-	if r.Name == "" {
+	path := restartLogPath(r)
+	if r.Name == "" || path == "" {
 		return nil
 	}
-	f, err := openRestartLog(restartLogPath(r))
+	f, err := openRestartLog(path)
 	if err != nil {
 		return nil
 	}

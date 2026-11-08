@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // A server whose cwd cannot be read (deleted directory, permissions) must
@@ -166,5 +167,141 @@ func TestChownPathsDoesNotFollowSymlink(t *testing.T) {
 	// only succeeds if the link itself is chowned.
 	if err := chownPaths([]string{link, target}, os.Getuid(), os.Getgid()); err != nil {
 		t.Fatalf("chownPaths: %v", err)
+	}
+}
+
+// A PID that exits and is recycled during the SIGTERM grace period must not
+// receive the SIGKILL meant for the old process.
+func TestStopPIDSkipsKillOnRecycledPID(t *testing.T) {
+	oldSignal, oldGone, oldSleep, oldStart := sendSignal, procGone, sleepFn, readStartTime
+	t.Cleanup(func() { sendSignal, procGone, sleepFn, readStartTime = oldSignal, oldGone, oldSleep, oldStart })
+	var sigs []syscall.Signal
+	sendSignal = func(_ int, s syscall.Signal) error { sigs = append(sigs, s); return nil }
+	procGone = func(int) bool { return false } // the PID always looks alive
+	sleepFn = func(time.Duration) {}
+	reads := 0
+	readStartTime = func(int) (uint64, bool) {
+		reads++
+		if reads == 1 {
+			return 100, true // before SIGTERM
+		}
+		return 200, true // someone else now owns the PID
+	}
+	if err := stopPID(123, false); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sigs, []syscall.Signal{syscall.SIGTERM}) {
+		t.Fatalf("signals = %v, want only SIGTERM", sigs)
+	}
+
+	// Same start time throughout: the stubborn process still gets SIGKILL.
+	sigs = nil
+	readStartTime = func(int) (uint64, bool) { return 100, true }
+	if err := stopPID(123, false); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sigs, []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL}) {
+		t.Fatalf("signals = %v, want TERM then KILL", sigs)
+	}
+
+	// Unknown start time: behaves as before and escalates.
+	sigs = nil
+	readStartTime = func(int) (uint64, bool) { return 0, false }
+	if err := stopPID(123, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(sigs) != 2 {
+		t.Fatalf("signals = %v, want TERM then KILL", sigs)
+	}
+}
+
+// No home directory must never mean "write into the current directory".
+func TestNoHomeKeepsStateOutOfCwd(t *testing.T) {
+	t.Setenv("SUDO_USER", "")
+	old := userHomeDir
+	userHomeDir = func() (string, error) { return "", errors.New("no home") }
+	t.Cleanup(func() { userHomeDir = old })
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	for name, p := range map[string]string{"events": eventsPath(), "guard": guardPath(), "hidden": hiddenPath()} {
+		if p != "" {
+			t.Errorf("%s path = %q, want empty", name, p)
+		}
+	}
+	if p := restartLogPath(Restartable{Name: "vite"}); p != "" {
+		t.Errorf("restart log path = %q", p)
+	}
+	appendEvents(eventsPath(), []Event{{Kind: "appeared", Port: "1"}})
+	_ = loadEvents(eventsPath())
+	if err := saveHidden(hiddenPath(), map[string]bool{"x": true}); err == nil {
+		t.Error("saveHidden without a home must fail")
+	}
+	if f := openLogFor(Restartable{Name: "vite"}); f != nil {
+		f.Close()
+		t.Error("no restart log without a home")
+	}
+	if ents, _ := os.ReadDir(cwd); len(ents) != 0 {
+		t.Fatalf("files leaked into cwd: %v", ents)
+	}
+}
+
+// A failed scan must not report the ports as free.
+func TestWaitFreeScanErrorCountsAsHeld(t *testing.T) {
+	oldScan, oldSleep := activePorts, sleepFn
+	t.Cleanup(func() { activePorts, sleepFn = oldScan, oldSleep })
+	sleepFn = func(time.Duration) {}
+	activePorts = func() ([]PortItem, error) { return []PortItem{}, errors.New("ss: not found") }
+	if held := waitFree([]string{"3000", "5173"}, 2*waitPoll); !reflect.DeepEqual(held, []string{"3000", "5173"}) {
+		t.Fatalf("held = %v", held)
+	}
+}
+
+func TestKeepStopped(t *testing.T) {
+	rs := []Restartable{{Name: "a", PID: "1"}, {Name: "b", PID: "2"}, {Name: "web", PID: "c1"}}
+	got := keepStopped(rs, []string{"2", "c1"})
+	if len(got) != 2 || got[0].Name != "b" || got[1].Name != "web" {
+		t.Fatalf("got %+v", got)
+	}
+	if keepStopped(rs, nil) != nil {
+		t.Fatal("nothing stopped must keep nothing")
+	}
+}
+
+// R only offers what a stop actually took down.
+func TestStopResultsPruneRestarts(t *testing.T) {
+	two := []Restartable{{Name: "a", PID: "1"}, {Name: "b", PID: "2"}}
+	for name, msg := range map[string]any{
+		"batch":   batchMsg{done: 1, err: errTest, stopped: []string{"2"}},
+		"project": projectMsg{project: "p", done: 1, err: errTest, stopped: []string{"2"}},
+		"orphans": orphansMsg{done: 1, err: errTest, stopped: []string{"2"}},
+	} {
+		m := testModel()
+		m.restarts = append([]Restartable(nil), two...)
+		nm, _ := m.update(msg)
+		if got := nm.(model).restarts; len(got) != 1 || got[0].Name != "b" {
+			t.Errorf("%s: restarts = %+v", name, got)
+		}
+	}
+	m := testModel()
+	m.restarts = two[:1]
+	nm, _ := m.update(actionMsg{item: PortItem{PID: "1"}, err: errTest})
+	if nm.(model).restarts != nil {
+		t.Error("failed single stop must clear restarts")
+	}
+	nm, _ = m.update(actionMsg{item: PortItem{PID: "1"}})
+	if len(nm.(model).restarts) != 1 {
+		t.Error("successful single stop keeps its restart")
+	}
+}
+
+func TestCaptureRestartRecordsPID(t *testing.T) {
+	ctr := PortItem{Source: "docker", PID: "c1", Port: "80", Process: "docker:web"}
+	if r, ok := captureRestart(ctr); !ok || r.PID != "c1" {
+		t.Fatalf("container capture: %+v", r)
+	}
+	me := strconv.Itoa(os.Getpid())
+	if r, ok := captureRestart(PortItem{PID: me, Process: "app", Port: "1"}); !ok || r.PID != me {
+		t.Fatalf("host capture: ok=%v pid=%q", ok, r.PID)
 	}
 }

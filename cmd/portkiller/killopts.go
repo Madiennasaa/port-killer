@@ -166,7 +166,11 @@ func portsOf(items []PortItem) []string {
 func waitFree(ports []string, timeout time.Duration) []string {
 	want := targetSet(ports)
 	busy := func() []string {
-		items, _ := activePorts()
+		items, err := activePorts()
+		if err != nil {
+			// ss failed: nothing is known, so every port counts as held.
+			return append([]string(nil), ports...)
+		}
 		var held []PortItem
 		for _, it := range items {
 			if want[it.Port] {

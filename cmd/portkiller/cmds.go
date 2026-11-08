@@ -33,29 +33,38 @@ type projectMsg struct {
 	project string
 	done    int
 	err     error
+	stopped []string
 }
 
 type orphansMsg struct {
-	done int
-	err  error
+	done    int
+	err     error
+	stopped []string
 }
 
 type batchMsg struct {
-	done int
-	err  error
+	done    int
+	err     error
+	stopped []string
 }
 
 // stopEach stops every item and returns how many succeeded plus the first
 // error, so one failure does not abort the rest of a batch.
 func stopEach(items []PortItem, force bool) (done int, firstErr error) {
+	stopped, firstErr := stopEachKeys(items, force)
+	return len(stopped), firstErr
+}
+
+// stopEachKeys is stopEach that also names the PIDs (container ids) stopped.
+func stopEachKeys(items []PortItem, force bool) (stopped []string, firstErr error) {
 	for _, it := range items {
 		if err := stopItem(it, force); err == nil {
-			done++
+			stopped = append(stopped, it.PID)
 		} else if firstErr == nil {
 			firstErr = err
 		}
 	}
-	return done, firstErr
+	return stopped, firstErr
 }
 
 // stopBatchCmd stops the rows marked with Space.
@@ -63,8 +72,8 @@ func stopBatchCmd(targets []PortItem, force bool) tea.Cmd {
 	snap := make([]PortItem, len(targets))
 	copy(snap, targets)
 	return func() tea.Msg {
-		done, err := stopEach(snap, force)
-		return batchMsg{done: done, err: err}
+		stopped, err := stopEachKeys(snap, force)
+		return batchMsg{done: len(stopped), err: err, stopped: stopped}
 	}
 }
 
@@ -78,8 +87,8 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 	snap := make([]PortItem, len(targets))
 	copy(snap, targets)
 	return func() tea.Msg {
-		done, err := stopEach(snap, false)
-		return projectMsg{project: project, done: done, err: err}
+		stopped, err := stopEachKeys(snap, false)
+		return projectMsg{project: project, done: len(stopped), err: err, stopped: stopped}
 	}
 }
 
@@ -128,7 +137,7 @@ func killOrphansCmd(items []PortItem) tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
-		done, err := stopEach(snap, false)
-		return orphansMsg{done: done, err: err}
+		stopped, err := stopEachKeys(snap, false)
+		return orphansMsg{done: len(stopped), err: err, stopped: stopped}
 	}
 }
