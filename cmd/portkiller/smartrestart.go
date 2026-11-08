@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -56,10 +55,8 @@ func restartTargets(sel []PortItem, force bool, stop func(PortItem, bool) error,
 			refused = append(refused, fmt.Sprintf("%s (PID %s): command line or working directory unreadable", t.it.Process, t.it.PID))
 			continue
 		}
-		if pid, err := strconv.Atoi(t.it.PID); err == nil && !t.r.Container {
-			if s, ok := supervisorOf(pid); ok {
-				refused = append(refused, fmt.Sprintf("%s (PID %s): managed by %s, restart it there", t.it.Process, t.it.PID, s.Name))
-			}
+		if t.r.Supervisor != "" {
+			refused = append(refused, fmt.Sprintf("%s (PID %s): managed by %s, restart it there", t.it.Process, t.it.PID, t.r.Supervisor))
 		}
 	}
 	if len(refused) > 0 {

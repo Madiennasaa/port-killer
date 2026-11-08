@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -216,6 +217,19 @@ func (m model) startKill(key string) (model, tea.Cmd, bool) {
 	return m, blastCmd(m.target), true
 }
 
+// splitSupervised (pure) separates what R may relaunch from what a process
+// manager owns; skipped describes the latter as "name (pm2)".
+func splitSupervised(rs []Restartable) (run []Restartable, skipped []string) {
+	for _, r := range rs {
+		if r.Supervisor != "" {
+			skipped = append(skipped, r.Name+" ("+r.Supervisor+")")
+			continue
+		}
+		run = append(run, r)
+	}
+	return run, skipped
+}
+
 // restartKey triggers "restart last stopped". ok is false for other keys.
 func (m model) restartKey(key string) (model, tea.Cmd, bool) {
 	if key != "R" {
@@ -228,9 +242,17 @@ func (m model) restartKey(key string) (model, tea.Cmd, bool) {
 		m.message, m.isErr = "No recently stopped process to restart.", false
 		return m, nil, true
 	}
+	run, skipped := splitSupervised(m.restarts)
+	if len(run) == 0 {
+		m.message, m.isErr = "Not restarted: "+strings.Join(skipped, ", ")+" (restart it in its process manager)", true
+		return m, nil, true
+	}
 	m.busy = true
-	m.message, m.isErr = "Restarting: "+restartLabel(m.restarts[0])+" — "+restartDesc(m.restarts[0])+"...", false
-	return m, restartCmd(m.restarts), true
+	m.message, m.isErr = "Restarting: "+restartLabel(run[0])+" — "+restartDesc(run[0])+"...", false
+	if len(skipped) > 0 {
+		m.message += " (skipped " + strings.Join(skipped, ", ") + ")"
+	}
+	return m, restartCmd(run), true
 }
 
 // normalKey handles the main keymap once no overlay or dialog is up.

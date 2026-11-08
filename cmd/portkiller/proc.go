@@ -285,6 +285,11 @@ func enrichProject(item *PortItem) {
 		item.Cwd, item.Project = "-", "-"
 		return
 	}
+	// Read before the cwd checks: a server whose directory was deleted still
+	// needs its start time, or stopItem cannot detect a recycled PID.
+	if st, ok := procStartTime(pid); ok {
+		item.startTime = st
+	}
 	cwd, err := readCwd(pid)
 	if err != nil || cwd == "" || strings.HasSuffix(cwd, " (deleted)") {
 		item.Cwd, item.Project = "-", "-"
@@ -299,7 +304,4 @@ func enrichProject(item *PortItem) {
 	item.Project = normalizeProjectName(item.Project)
 	item.Branch = gitBranch(cwd, home)
 	item.Framework = procFramework(item.PID)
-	if st, ok := procStartTime(pid); ok {
-		item.startTime = st
-	}
 }

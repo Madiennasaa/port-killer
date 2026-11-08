@@ -74,7 +74,7 @@ var eventsFlock = syscall.Flock
 // lockEvents serializes access to the events file across processes. It is best
 // effort: nil is returned when locking is unavailable and the caller proceeds.
 func lockEvents(path string, exclusive bool) *os.File {
-	f, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := openNoFollow(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil
 	}
@@ -112,7 +112,7 @@ func appendEvents(path string, evs []Event) {
 	}
 	lock := lockEvents(path, true)
 	defer unlockEvents(lock)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
@@ -124,7 +124,7 @@ func appendEvents(path string, evs []Event) {
 	f.Close()
 	chownToSudoUser(filepath.Dir(path), path, path+".lock")
 	if b, err := os.ReadFile(path); err == nil && strings.Count(string(b), "\n") > maxEvents+200 {
-		os.WriteFile(path, []byte(trimLines(string(b), maxEvents)), 0o644)
+		_ = writeFileNoFollow(path, []byte(trimLines(string(b), maxEvents)), 0o644)
 	}
 }
 

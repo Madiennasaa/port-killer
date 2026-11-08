@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/user"
 	"strconv"
+	"syscall"
 )
 
 // desktopUser is the invoking account when portkiller runs as root through
@@ -75,9 +76,31 @@ func chownIDs(uidStr, gidStr string) (uid, gid int, ok bool) {
 func chownPaths(paths []string, uid, gid int) error {
 	var first error
 	for _, p := range paths {
-		if err := os.Chown(p, uid, gid); err != nil && first == nil {
+		// Lchown: a symlink planted in the user's state directory must not
+		// hand a root-owned target to the user.
+		if err := os.Lchown(p, uid, gid); err != nil && first == nil {
 			first = err
 		}
 	}
 	return first
+}
+
+// openNoFollow is os.OpenFile that refuses a symlink as the final path
+// component. portkiller runs as root but writes into the invoking user's
+// home, where a symlink could otherwise redirect the write to any file.
+func openNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
+	return os.OpenFile(path, flag|syscall.O_NOFOLLOW, perm)
+}
+
+// writeFileNoFollow is os.WriteFile through openNoFollow.
+func writeFileNoFollow(path string, data []byte, perm os.FileMode) error {
+	f, err := openNoFollow(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }

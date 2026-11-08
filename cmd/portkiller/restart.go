@@ -17,6 +17,24 @@ import (
 // without an actual root process.
 var lookupUserById = user.LookupId
 
+// userGroupIds is a seam for the supplementary groups of a restart's owner.
+var userGroupIds = func(u *user.User) ([]string, error) { return u.GroupIds() }
+
+// credentialGroups (pure) parses group ids for syscall.Credential, always
+// including the primary gid. An unparsable entry is skipped rather than
+// failing the restart.
+func credentialGroups(ids []string, primary uint32) []uint32 {
+	out := []uint32{primary}
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 32)
+		if err != nil || uint32(n) == primary {
+			continue
+		}
+		out = append(out, uint32(n))
+	}
+	return out
+}
+
 // Restartable holds process data recorded before it is stopped. Exe is the
 // absolute /proc/<pid>/exe path when it could be read, so a poisoned PATH
 // cannot make a root restart execute an impostor. Env is the process's own
@@ -35,6 +53,11 @@ type Restartable struct {
 	Unit      string
 	Ports     []string // ports it listened on, waited for before relaunch
 	Framework string
+	// Supervisor names the process manager (pm2, supervisord...) that owns
+	// the process. It is recorded before the stop because the ancestry is
+	// gone afterwards; such a process must not be relaunched by portkiller,
+	// or it would run twice once the manager respawns it.
+	Supervisor string
 }
 
 type restartMsg struct {
@@ -85,6 +108,9 @@ func captureRestart(it PortItem) (Restartable, bool) {
 	r.Env = capturedEnv(it.PID)
 	if unit, ok := serviceUnit(pid); ok {
 		r.Unit = unit
+	}
+	if s, ok := supervisorOf(pid); ok {
+		r.Supervisor = s.Name
 	}
 	return r, true
 }
@@ -174,7 +200,7 @@ func defaultOpenRestartLog(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +267,10 @@ func applyRestartCredential(c *exec.Cmd, r Restartable) error {
 	if err != nil {
 		return fmt.Errorf("user %s: bad gid %q: %w", u.Username, u.Gid, err)
 	}
-	c.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(r.UID), Gid: uint32(gid)}
+	// Without Groups, Go calls setgroups(0) and the relaunched server would
+	// lose memberships such as docker or video.
+	ids, _ := userGroupIds(u)
+	c.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(r.UID), Gid: uint32(gid), Groups: credentialGroups(ids, uint32(gid))}
 	c.Env = withIdentity(c.Env, u.HomeDir, u.Username)
 	return nil
 }

@@ -44,7 +44,7 @@ func saveHidden(path string, hidden map[string]bool) error {
 		return err
 	}
 	data := "# process names hidden by portkiller (H toggles, U shows them)\n" + strings.Join(names, "\n") + "\n"
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+	if err := writeFileNoFollow(path, []byte(data), 0o644); err != nil {
 		return err
 	}
 	chownToSudoUser(filepath.Dir(path), path)
