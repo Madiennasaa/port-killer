@@ -9,12 +9,13 @@ portkiller \- interactive terminal port manager for Linux
 .B portkiller
 shows who is listening on which ports, enriched with process, project,
 health and kill-impact information, and stops listeners safely: host
-processes get SIGTERM (then SIGKILL after 3 seconds with
-.BR --force ),
+processes get SIGTERM, then SIGKILL if still alive after 3 seconds
+(\fI--force\fP sends SIGKILL straight away),
 containers are stopped with docker stop or podman stop (rootless podman
 containers as their owner), and systemd services through
 systemctl. A PID is only signalled while its kernel start time still
-matches the scan, so a recycled PID cannot be killed by mistake.
+matches the scan, and the start time is checked again before the SIGKILL,
+so a recycled PID cannot be killed by mistake.
 Running with no flags starts the interactive TUI.
 .SH OPTIONS
 .TP
@@ -27,9 +28,9 @@ process, source; "\-" for an empty field).
 Stop everything listening on the given port(s). Multiple ports may be
 given in one command. A container is stopped via \fIdocker stop\fP or
 \fIpodman stop\fP, a
-systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM.
-Retry with \fI--force\fP to escalate to SIGKILL if the PID is still
-alive after 3 seconds.
+systemd unit via \fIsystemctl\fP, and a host process receives SIGTERM,
+then SIGKILL if it is still alive after 3 seconds. \fI--force\fP sends
+SIGKILL straight away.
 A listener run by a process manager (pm2, supervisord, nodemon, forever,
 runit, s6) gets a warning on stderr naming the command that stops it for
 good, since the manager may start it again.
@@ -42,8 +43,11 @@ Stop every listener whose process name, or container name, is
 Stop the listeners on the given port(s) (or \fI--kill-name\fP), wait until
 the ports are free (10 seconds unless \fI--wait\fP gives another limit),
 then start the same command line again in its original directory and
-environment, logging to
-\fI~/.local/state/portkiller/restart-NAME.log\fP. systemd units are
+environment as its original owner (with that user's supplementary
+groups), logging to
+\fI~/.local/state/portkiller/restart-NAME.log\fP. If the listener table
+cannot be read, the ports count as still taken and nothing is relaunched.
+systemd units are
 restarted with \fIsystemctl restart\fP and containers with \fIstart\fP.
 Nothing is stopped when a target cannot be relaunched or is owned by a
 process manager. Accepts \fI--force\fP, \fI--signal\fP and \fI--dry-run\fP.
@@ -57,7 +61,8 @@ combined with \fI--force\fP.
 .TP
 .BR \-\-wait " [\\fISECONDS\\fP]"
 After stopping, wait until the stopped ports have no listener (10 seconds
-unless given) and exit 1 if one is still taken.
+unless given) and exit 1 if one is still taken. A failed scan (\fIss\fP
+not runnable) counts as taken.
 .TP
 .B \-\-dry\-run
 With \fI--kill\fP: print one line per listener showing what would be
@@ -102,6 +107,13 @@ History log of port appear/vanish events.
 .TP
 .IR ~/.config/portkiller/hidden
 Process names hidden from the TUI table (H toggles, U shows them).
+.TP
+.IR ~/.local/state/portkiller/restart-NAME.log
+stdout and stderr of a process relaunched by \fI--restart\fP or R.
+.PP
+Under sudo these paths are in the invoking user's home and are owned by
+that user. portkiller will not write through a symlink at any of them, and
+writes none of them when no home directory can be found.
 .SH SEE ALSO
 .BR ss (8),
 .BR docker (1),

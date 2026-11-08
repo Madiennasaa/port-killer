@@ -134,7 +134,7 @@ func helpLines() []string {
 		" o                          Show orphans only",
 		" X                          Clean up all orphans (SIGTERM)",
 		" P                          Stop all processes of selected project",
-		" R                          Restart last stopped process",
+		" R                          Restart last stopped (skips pm2 & co.)",
 		" ? or F1                    This help",
 		" F10 or q                   Quit",
 		"",

@@ -14,7 +14,7 @@ Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 - **Blast radius**: the kill dialog shows connections, clients, and child processes
 - **Respawn warning**: a listener run by pm2, supervisord, nodemon, forever, runit or s6 is flagged in the kill dialog and by `--kill`/`--dry-run`, with the command that stops it for good (`pm2 stop 3`, `supervisorctl stop web`)
 - **Framework detection**: Vite, Next.js, Nuxt, Astro, Angular, webpack, Django, Flask, Uvicorn, Gunicorn, Rails, Laravel, Phoenix, Hugo, `go run` and more, read from the command line; shown in the detail panel, `--json` and MCP, and matched by the search filter
-- **Smart restart**: `--restart 5173` (or `R` in the TUI) stops a dev server, waits until its port is really free, then relaunches the same command in the same directory and environment. It refuses, stopping nothing, when the command line is unreadable or a process manager owns the process
+- **Smart restart**: `--restart 5173` (or `R` in the TUI) stops a dev server, waits until its port is really free, then relaunches the same command in the same directory and environment. It refuses, stopping nothing, when the command line is unreadable or a process manager owns the process. In the TUI, `R` only relaunches what the last stop actually took down and skips anything pm2, supervisord and the like manage
 - **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause
@@ -55,7 +55,7 @@ Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
 | `h` | History |
 | `c` | Conflict check vs `docker-compose.yml` / `.env` |
 | `P` | Stop all processes of the project (skips root/system processes) |
-| `R` | Restart last stopped |
+| `R` | Restart what the last stop took down (skips processes a process manager owns) |
 | `?` or `F1` | Help |
 | `F10`, `q` or `Ctrl+C` | Quit |
 
@@ -111,12 +111,21 @@ MIT
 
 Host processes are stopped with SIGTERM and get 3 seconds to exit before
 SIGKILL. A process is only signalled when its PID still belongs to the same
-start time captured during the scan, and a systemd system service is stopped
-or restarted through `systemctl` instead of signalling its PID.
+start time captured during the scan; the start time is checked again during
+the grace period, so a PID recycled meanwhile never receives the SIGKILL. A
+systemd system service is stopped or restarted through `systemctl` instead of
+signalling its PID.
 
 Restarted processes keep their original environment, are launched from
-`/proc/<pid>/exe`, and write stdout/stderr to
-`~/.local/state/portkiller/restart-<name>.log`.
+`/proc/<pid>/exe` as their original owner (supplementary groups included), and
+write stdout/stderr to `~/.local/state/portkiller/restart-<name>.log`. If the
+listener table cannot be read (`ss` fails), the port counts as still taken, so
+`--wait` fails and nothing is relaunched.
+
+Under sudo, state files live in the invoking user's home and are handed to
+that user. portkiller refuses to write through a symlink placed at any of those
+paths, and skips them entirely when no home directory can be determined rather
+than writing into the current directory.
 
 Unknown flags exit with status 2 instead of silently starting the TUI.
 `--help`, `--version`, `--free` and `--history` run without a sudo prompt.
