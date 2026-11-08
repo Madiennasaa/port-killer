@@ -35,3 +35,6 @@ Thumbs.db
 .mcp.json
 .claude/
 .github/copilot-instructions.md
+
+# serena: local agent project config
+.serena/
