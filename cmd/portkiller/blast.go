@@ -67,6 +67,23 @@ func countEstablished(conns []Conn, port int) []Conn {
 	return out
 }
 
+// clientConns (pure): the local client ends of the server's established
+// connections: ESTABLISHED sockets to port whose local port is the peer
+// port of one of est. est itself is the server's side, owned by the server.
+func clientConns(conns, est []Conn, port int) []Conn {
+	peers := map[int]bool{}
+	for _, c := range est {
+		peers[c.RemotePort] = true
+	}
+	var out []Conn
+	for _, c := range conns {
+		if c.State == "01" && c.RemotePort == port && peers[c.LocalPort] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // countChildren (pure): number of processes with ppid == pid from a pid->ppid map.
 func countChildren(ppids map[int]int, pid int) int {
 	n := 0
@@ -173,13 +190,14 @@ func ComputeBlast(it PortItem) Blast {
 	if it.IsContainer() {
 		return b
 	}
+	clients := clientConns(conns, est, port)
 	inodes := map[string]bool{}
-	for _, c := range est {
+	for _, c := range clients {
 		inodes[c.Inode] = true
 	}
 	owners := inodeOwners(inodes)
 	var names []string
-	for _, c := range est {
+	for _, c := range clients {
 		names = append(names, owners[c.Inode])
 	}
 	b.Clients = summarizeClients(names)
