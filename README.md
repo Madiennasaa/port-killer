@@ -18,11 +18,12 @@ Data sources: `ss`, `/proc`, `docker ps`, and `podman ps`.
 - **Detail panel**, **Stop project** (`P`), **Restart** (`R`)
 - **Port Guard**: reserve ports in `~/.config/portkiller/guard.conf`
 - **History** (`h`): ports appearing/disappearing, with the cause
+- **Watch mode** (`--watch`): tail appear/vanish/guard events in the terminal, optionally as desktop notifications (`--notify`)
 - **Conflict check** (`c`): ports declared in `docker-compose.yml` or `.env` of the current directory vs. running listeners
 - **Multi-select**: mark rows with `Space`, then stop them all in one confirmation
 - **Open in browser** (`b`): opens `http://localhost:<port>` as the desktop user, never as root
 - **Hide noisy processes** (`H`): persisted in `~/.config/portkiller/hidden`; `U` shows them dimmed
-- **Responsive layout + mouse support**
+- **Responsive layout + mouse support**; honors `NO_COLOR` (the cursor row is then marked with `>`)
 
 ## Install
 
@@ -47,7 +48,7 @@ Run `portkiller`. It re-executes itself with `sudo` so it can see all processes.
 | `F6` or `s` | Sort |
 | `F9` or `Enter` | Stop (SIGTERM / `docker stop` / `podman stop`) with impact preview; acts on all marked rows if any |
 | `F8` or `K` | Force kill (SIGKILL) |
-| `Space` | Mark / unmark row (`Esc` clears marks and search) |
+| `Space` | Mark / unmark row and move down (`Esc` clears marks and search) |
 | `b` | Open the port in the browser |
 | `H` / `U` | Hide / unhide the process name / show hidden rows |
 | `o` / `X` | Orphans only / clean up orphans |
@@ -76,8 +77,9 @@ Create `~/.config/portkiller/guard.conf`, one rule per line (`port=owner`; owner
 
 ## Development
 
-    make test    # go vet + go test -race
-    make cover   # coverage summary
+    make test        # go vet + go test -race
+    make cover       # coverage summary
+    make cover-gate  # fails below 100% statement coverage (CI runs it)
     make build   # stamps the version from `git describe`
 
 ## License
@@ -105,6 +107,8 @@ MIT
     portkiller --history         # recent appear/vanished events, newest first
     portkiller --history --port 3000 --limit 50
     portkiller --history --json
+    portkiller --watch           # tail appear/vanish/guard events until Ctrl+C
+    portkiller --watch --port 3000 --notify
     portkiller --completions bash > ~/.local/share/bash-completion/completions/portkiller
     portkiller --completions zsh > "${fpath[1]}/_portkiller"
     portkiller --completions fish > ~/.config/fish/completions/portkiller.fish
@@ -128,7 +132,9 @@ paths, and skips them entirely when no home directory can be determined rather
 than writing into the current directory.
 
 Unknown flags exit with status 2 instead of silently starting the TUI.
-`--help`, `--version`, `--free` and `--history` run without a sudo prompt.
+`--help`, `--version`, `--free`, `--history`, `--completions` and `--mcp` run
+without a sudo prompt; the TUI, `--list`, `--kill`, `--kill-name`, `--restart`
+and `--watch` re-run themselves under sudo when it is available.
 `--free` checks TCP bindability, so ranges below 1024 need root (`sudo
 portkiller --free 80-90`).
 

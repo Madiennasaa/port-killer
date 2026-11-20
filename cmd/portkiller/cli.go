@@ -46,6 +46,7 @@ func hasFlag(args []string, f string) bool {
 //	portkiller --kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]
 //	portkiller --free START-END [--json]
 //	portkiller --history [--port N] [--limit N] [--json]
+//	portkiller --watch [--port N] [--notify]
 //	portkiller --mcp [--allow-kill]
 //	portkiller --help
 //	portkiller --version
@@ -125,7 +126,7 @@ func killMulti(ports map[string]bool, force bool, items []PortItem, stop func(Po
 }
 
 func cliHelp() {
-	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--restart PORT... [--force] [--wait SECS] [--dry-run]] [--free START-END [--json]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--mcp [--allow-kill]] [--version]")
+	fmt.Println("usage: portkiller [--list [--json|--plain]] [--kill PORT... [--kill-name NAME...] [--force|--signal SIG] [--wait [SECS]] [--dry-run]] [--restart PORT... [--force] [--wait SECS] [--dry-run]] [--free START-END [--json]] [--watch [--port N] [--notify]] [--completions bash|zsh|fish] [--history [--port N] [--limit N] [--json]] [--mcp [--allow-kill]] [--version]")
 	fmt.Println("\nno flag starts the interactive TUI")
 	fmt.Println("--kill accepts several ports and shows the impact before stopping")
 	fmt.Println("--kill-name stops every listener whose process or container has that name")
@@ -136,7 +137,8 @@ func cliHelp() {
 	fmt.Println("--plain prints --list as tab-separated fields for scripts")
 	fmt.Println("--free prints the first port that can be bound in the given range")
 	fmt.Println("--history prints recent appear/vanished events, newest first")
-	fmt.Println("--watch tails port appear/vanish/guard events until Ctrl+C; add --notify for desktop notifications")
+	fmt.Println("--watch tails port appear/vanish/guard events until Ctrl+C; --port N narrows it,")
+	fmt.Println("  --notify adds desktop notifications")
 	fmt.Println("--mcp serves the Model Context Protocol on stdio for AI agents (read-only")
 	fmt.Println("  plus stop previews); add --allow-kill to let the agent stop listeners")
 	fmt.Println("--completions prints a completion script; source it or place it")

@@ -119,7 +119,7 @@ func detailLines(it PortItem, d Detail) []string {
 func helpLines() []string {
 	return []string{
 		" j/k Up/Down PgUp/PgDn g/G  Navigate",
-		" F3 or /                    Search (Esc clears filter)",
+		" F3 or /                    Search (Esc clears filter and marks)",
 		" F4 or t                    Protocol TCP / UDP / ALL",
 		" F5 or r                    Manual refresh (auto every 2s)",
 		" F6 or s                    Sort PORT / PROCESS / PID / PROTO",
@@ -136,10 +136,11 @@ func helpLines() []string {
 		" P                          Stop all processes of selected project",
 		" R                          Restart last stopped (skips pm2 & co.)",
 		" ? or F1                    This help",
-		" F10 or q                   Quit",
+		" F10, q or Ctrl+C           Quit",
 		"",
 		" Marker  ⚠ orphan (TCP, no tty, belongs to a project)   ✓ marked   ◌ hidden",
 		" Health  ● alive   ○ no response   … pending   - UDP",
+		" Mouse   click selects, click again or right-click stops, wheel scrolls",
 	}
 }
 

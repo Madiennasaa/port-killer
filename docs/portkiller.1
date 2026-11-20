@@ -74,6 +74,12 @@ Print the first bindable TCP port in the range.
 .BR \-\-history " [\\fI\-\-port\fP N] [\\fI\-\-limit\fP N] [\-\-json]"
 Print recent appear/vanished events from the events log, newest first.
 .TP
+.BR \-\-watch " [\\fI\-\-port\fP N] [\-\-notify]"
+Print port appear/vanish events and new Port Guard violations as they
+happen, until interrupted. \fI--port\fP narrows the output to one port and
+\fI--notify\fP also sends each event as a desktop notification. A failed
+scan prints a warning and reports nothing for that pass.
+.TP
 .BR \-\-mcp " [\\fI\-\-allow\-kill\\fP]"
 Serve the Model Context Protocol on stdin/stdout for AI agents, with the
 tools list_ports, free_port, port_history, stop_port and restart_port.
@@ -83,8 +89,72 @@ privileges and never re-executes under sudo.
 .BI \-\-completions " SHELL"
 Print a completion script for \fIbash\fP, \fIzsh\fP or \fIfish\fP.
 .TP
-.BR \ \-\-help ", " \-\-version
-Show help or version information. These run without sudo.
+.BR \-h ", " \-\-help ", " \-v ", " \-\-version
+Show help or version information. These, \fI--free\fP, \fI--history\fP,
+\fI--completions\fP and \fI--mcp\fP run without sudo; the TUI and the
+other modes re-execute themselves under sudo when it is available.
+.SH KEYS
+In the TUI:
+.TP
+.BR j / k ", arrows, " PgUp / PgDn ", " g / G
+Navigate.
+.TP
+.BR F3 " or " /
+Search (process, port, PID, address, project, branch, framework, cwd).
+Esc clears the search and the marks.
+.TP
+.BR F4 " or " t
+Cycle protocol filter TCP / UDP / ALL.
+.TP
+.BR F5 " or " r
+Refresh (automatic every 2 seconds).
+.TP
+.BR F6 " or " s
+Cycle sort PORT / PROCESS / PID / PROTO.
+.TP
+.BR F9 " or " Enter
+Stop the selected listener (or every marked row) after a confirmation that
+shows its connections, clients and child processes.
+.TP
+.BR F8 " or " K
+Force kill (SIGKILL).
+.TP
+.B Space
+Mark or unmark the row and move down.
+.TP
+.BR i " or " Tab
+Toggle the detail panel.
+.TP
+.B b
+Open http://localhost:PORT in the desktop user's browser.
+.TP
+.BR H " / " U
+Hide or unhide the process name; show hidden rows dimmed.
+.TP
+.BR o " / " X
+Show orphans only; stop all orphans (SIGTERM).
+.TP
+.B h
+Port history.
+.TP
+.B c
+Check ports declared in docker-compose.yml or .env of the current
+directory against running listeners.
+.TP
+.B P
+Stop every process of the selected row's project.
+.TP
+.B R
+Restart what the last stop took down (skips process-manager-owned ones).
+.TP
+.BR ? " or " F1
+Help.
+.TP
+.BR F10 ", " q " or " Ctrl+C
+Quit.
+.PP
+Mouse: click a row to select it, click it again or right-click to stop it,
+scroll to move, click a footer key to run it.
 .SH EXIT CODES
 .TP
 .B 0
@@ -97,6 +167,10 @@ no listener, a port was still taken after \fI--wait\fP, or a
 .TP
 .B 2
 Bad or unknown argument.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+When set, the TUI draws without colors and marks the cursor row with ">".
 .SH FILES
 .TP
 .IR ~/.config/portkiller/guard.conf
