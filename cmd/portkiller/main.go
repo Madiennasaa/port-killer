@@ -607,9 +607,18 @@ var (
 	sysExec    = syscall.Exec
 )
 
+// sudoMarker is set in the environment of the sudo re-exec. Seeing it while
+// still not root means sudo did not elevate (a shim, runas_default, a
+// container), and exec'ing it again would loop forever.
+const sudoMarker = "PORTKILLER_SUDO"
+
 // reexecSudo relaunches the current binary under sudo so every process is
-// visible. It only returns when sudo is unavailable or the exec fails.
+// visible. It only returns when sudo is unavailable, already failed to
+// elevate, or the exec fails.
 func reexecSudo() {
+	if os.Getenv(sudoMarker) == "1" {
+		return
+	}
 	exe, err := executable()
 	if err != nil {
 		return
@@ -618,7 +627,7 @@ func reexecSudo() {
 	if err != nil {
 		return
 	}
-	sysExec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), os.Environ())
+	sysExec(sudo, append([]string{"sudo", "-E", exe}, os.Args[1:]...), append(os.Environ(), sudoMarker+"=1"))
 }
 
 // appRun is the non-TUI entry point. It returns handled=true when the args
