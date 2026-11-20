@@ -39,9 +39,9 @@ func TestFindProjectRoot(t *testing.T) {
 		{"package", map[string]bool{"/srv/z/package.json": true}, "/srv/z/src", "", "z"},
 		{"fallback", map[string]bool{}, "/home/u/none", "", "none"},
 		{"root", map[string]bool{}, "/", "", "/"},
-		{"home-stop", map[string]bool{"/home/ubai02/.git": true}, "/home/ubai02/sideproj", "/home/ubai02", "sideproj"},
-		{"wrong-home-documented", map[string]bool{"/home/ubai02/.git": true}, "/home/ubai02/sideproj", "/root", "ubai02"},
-		{"home-nested", map[string]bool{"/home/ubai02/.git": true, "/home/ubai02/sideproj/go.mod": true}, "/home/ubai02/sideproj/sub", "/home/ubai02", "sideproj"},
+		{"home-stop", map[string]bool{"/home/alice/.git": true}, "/home/alice/sideproj", "/home/alice", "sideproj"},
+		{"wrong-home-documented", map[string]bool{"/home/alice/.git": true}, "/home/alice/sideproj", "/root", "alice"},
+		{"home-nested", map[string]bool{"/home/alice/.git": true, "/home/alice/sideproj/go.mod": true}, "/home/alice/sideproj/sub", "/home/alice", "sideproj"},
 	}
 	for _, c := range cases {
 		exists := func(p string) bool { return c.files[p] }
@@ -67,22 +67,22 @@ func TestLookupHomeForUid(t *testing.T) {
 			return "/root", true
 		}
 		if id == "1000" {
-			return "/home/ubai02", true
+			return "/home/alice", true
 		}
 		return "", false
 	}
 	byName := func(n string) (string, bool) {
-		if n == "ubai02" {
-			return "/home/ubai02", true
+		if n == "alice" {
+			return "/home/alice", true
 		}
 		return "", false
 	}
 	// uid 0 + SUDO_USER -> the sudo user's home, not /root
-	if h, _ := lookupHomeForUid("0", "ubai02", byID, byName); h != "/home/ubai02" {
+	if h, _ := lookupHomeForUid("0", "alice", byID, byName); h != "/home/alice" {
 		t.Fatalf("root+sudo: got %q", h)
 	}
 	// uid biasa -> home sendiri
-	if h, _ := lookupHomeForUid("1000", "", byID, byName); h != "/home/ubai02" {
+	if h, _ := lookupHomeForUid("1000", "", byID, byName); h != "/home/alice" {
 		t.Fatalf("uid: got %q", h)
 	}
 }
@@ -134,7 +134,7 @@ func TestIsOrphan(t *testing.T) {
 		{"service-uid", 1, "init", 0, "daemon", 100, "tcp", "app", false},
 		{"root-nonsystem", 1, "init", 0, "node", 0, "tcp", "app", true},
 		{"normal", 5000, "bash", 34816, "node", 1000, "tcp", "app", false},
-		{"udp-chromium", 1, "systemd", 0, "chromium", 1000, "udp", "ubai02", false},
+		{"udp-chromium", 1, "systemd", 0, "chromium", 1000, "udp", "alice", false},
 		{"tcp-no-project", 1, "init", 0, "node", 1000, "tcp", "-", false},
 		{"tcp-empty-project", 1, "init", 0, "node", 1000, "tcp", "", false},
 	}
