@@ -75,17 +75,30 @@ func (s mcpServer) serve(in io.Reader, out io.Writer) error {
 	return sc.Err()
 }
 
-// handle answers one message; ok=false means it was a notification.
-func (s mcpServer) handle(line []byte) (rpcResponse, bool) {
+// handle answers one message; ok=false means it was a notification. A
+// panicking handler is answered with -32603 instead of killing the session.
+func (s mcpServer) handle(line []byte) (resp rpcResponse, ok bool) {
+	if !json.Valid(line) {
+		return rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &rpcError{-32700, "parse error"}}, true
+	}
 	var req rpcRequest
 	if err := json.Unmarshal(line, &req); err != nil {
-		return rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &rpcError{-32700, "parse error"}}, true
+		// Valid JSON but not a request object: a batch, a number...
+		return rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &rpcError{-32600, "invalid request: " + err.Error()}}, true
 	}
 	if len(req.ID) == 0 {
 		return rpcResponse{}, false
 	}
-	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
+	resp = rpcResponse{JSONRPC: "2.0", ID: req.ID}
+	defer func() {
+		if r := recover(); r != nil {
+			resp = rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{-32603, fmt.Sprintf("internal error: %v", r)}}
+			ok = true
+		}
+	}()
 	switch req.Method {
+	case "":
+		resp.Error = &rpcError{-32600, "invalid request: missing method"}
 	case "initialize":
 		resp.Result = initializeResult(req.Params)
 	case "ping":
@@ -208,6 +221,65 @@ func mcpTools() []map[string]any {
 
 var errUnknownTool = errors.New("unknown tool")
 
+// checkToolArgs refuses argument names a tool does not declare. A
+// misspelled dry_run ("dryRun") must not silently turn a preview into a
+// real stop.
+func checkToolArgs(name string, raw json.RawMessage) error {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(raw, &keys) != nil {
+		return nil // not an object: the typed decode reports it
+	}
+	for _, t := range mcpTools() {
+		if t["name"] != name {
+			continue
+		}
+		props := t["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		for k := range keys {
+			if _, ok := props[k]; !ok {
+				return fmt.Errorf("unknown argument %q for %s", k, name)
+			}
+		}
+	}
+	return nil
+}
+
+// mcpLimit maps a port_history limit onto 1..maxEvents; zero or negative
+// means the CLI default of 20.
+func mcpLimit(n int) int {
+	switch {
+	case n <= 0:
+		return 20
+	case n > maxEvents:
+		return maxEvents
+	}
+	return n
+}
+
+// optionalPort normalises an optional port filter ("" stays "").
+func optionalPort(p string) (string, error) {
+	if p == "" {
+		return "", nil
+	}
+	ps, err := normalizePorts([]string{p})
+	if err != nil {
+		return "", err
+	}
+	return ps[0], nil
+}
+
+// checkTargets validates and normalises stop/restart targets.
+func checkTargets(ports, names []string) ([]string, error) {
+	if len(ports) == 0 && len(names) == 0 {
+		return nil, errors.New("give ports and/or names")
+	}
+	for _, n := range names {
+		if strings.TrimSpace(n) == "" {
+			return nil, errors.New("empty name in names")
+		}
+	}
+	return normalizePorts(ports)
+}
+
 // callTool decodes arguments and runs one tool.
 func (s mcpServer) callTool(name string, raw json.RawMessage) (any, error) {
 	var a struct {
@@ -226,14 +298,21 @@ func (s mcpServer) callTool(name string, raw json.RawMessage) (any, error) {
 		if err := json.Unmarshal(raw, &a); err != nil {
 			return nil, fmt.Errorf("invalid arguments: %v", err)
 		}
+		if err := checkToolArgs(name, raw); err != nil {
+			return nil, err
+		}
+	}
+	port, err := optionalPort(a.Port)
+	if err != nil {
+		return nil, err
 	}
 	switch name {
 	case "list_ports":
-		return toolListPorts(a.Port, a.Process, a.Proto)
+		return toolListPorts(port, a.Process, a.Proto)
 	case "free_port":
 		return toolFreePort(a.Range)
 	case "port_history":
-		return map[string]any{"events": historyEvents(loadEvents(eventsPath()), a.Port, a.Limit)}, nil
+		return map[string]any{"events": historyEvents(loadEvents(eventsPath()), port, mcpLimit(a.Limit))}, nil
 	case "stop_port":
 		return s.toolStopPort(a.Ports, a.Names, a.Force, a.Signal, a.DryRun)
 	case "restart_port":
@@ -284,13 +363,9 @@ type stopOutcome struct {
 
 // toolStopPort mirrors --kill without printing: stdout is the protocol.
 func (s mcpServer) toolStopPort(ports, names []string, force bool, signal string, dryRun bool) (any, error) {
-	if len(ports) == 0 && len(names) == 0 {
-		return nil, errors.New("give ports and/or names")
-	}
-	for _, p := range ports {
-		if _, err := parsePort(p); err != nil {
-			return nil, err
-		}
+	ports, err := checkTargets(ports, names)
+	if err != nil {
+		return nil, err
 	}
 	var opts killOpts
 	if signal != "" {
@@ -345,13 +420,9 @@ func (s mcpServer) toolStopPort(ports, names []string, force bool, signal string
 
 // toolRestartPort mirrors --restart without printing.
 func (s mcpServer) toolRestartPort(ports, names []string, force, dryRun bool) (any, error) {
-	if len(ports) == 0 && len(names) == 0 {
-		return nil, errors.New("give ports and/or names")
-	}
-	for _, p := range ports {
-		if _, err := parsePort(p); err != nil {
-			return nil, err
-		}
+	ports, err := checkTargets(ports, names)
+	if err != nil {
+		return nil, err
 	}
 	if !dryRun && !s.allowKill {
 		return nil, errors.New("restarting is disabled: restart the server as `portkiller --mcp --allow-kill`, or pass dry_run")
