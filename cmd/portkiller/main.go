@@ -112,6 +112,14 @@ type model struct {
 	// pendingBell marks a newly detected guard violation that must ring the
 	// terminal bell on the next Update, then be consumed.
 	pendingBell bool
+	// pendingNotify is the desktop notification body for that violation,
+	// sent from a command so a stuck notify-send never blocks Update.
+	pendingNotify string
+
+	// scanSeq numbers every scan the model starts; doneSeq is the newest
+	// one that has landed. Older results are dropped, and the tick only
+	// starts a scan when none is in flight.
+	scanSeq, doneSeq int
 }
 
 func initialModel() model {
@@ -394,7 +402,7 @@ func (m *model) checkGuardNow() {
 	// notification plus a terminal bell on the next Update, once per event.
 	if len(evs) > 0 {
 		m.pendingBell = true
-		_ = notifySend("portkiller guard", guardNotifyText(m.violations))
+		m.pendingNotify = guardNotifyText(m.violations)
 	}
 }
 
@@ -445,7 +453,19 @@ func (m model) finishWork(okMsg, errMsg string, err error) (model, tea.Cmd) {
 	} else {
 		m.message, m.isErr = okMsg, false
 	}
-	return m, refreshCmd
+	cmd := m.scanCmd()
+	return m, cmd
+}
+
+// scanCmd starts a sequenced port scan.
+func (m *model) scanCmd() tea.Cmd {
+	m.scanSeq++
+	seq := m.scanSeq
+	return func() tea.Msg {
+		msg := refreshCmd().(portsMsg)
+		msg.seq = seq
+		return msg
+	}
 }
 
 // messageExpired reports whether a status message has outlived its TTL and is
@@ -465,9 +485,19 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.messageExpired() {
 			m.message, m.isErr, m.msgAt = "", false, time.Time{}
 		}
-		return m, tea.Batch(refreshCmd, tickCmd())
+		if m.scanSeq != m.doneSeq {
+			return m, tickCmd()
+		}
+		scan := m.scanCmd()
+		return m, tea.Batch(scan, tickCmd())
 
 	case portsMsg:
+		if msg.seq != 0 {
+			if msg.seq <= m.doneSeq {
+				return m, nil
+			}
+			m.doneSeq = msg.seq
+		}
 		if msg.Err != nil {
 			// Keep the last good snapshot: a partial scan would record false
 			// "vanished" events and prune valid health results.
@@ -492,6 +522,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// bubbletea v1 has no native bell cmd; a BEL print rings the
 			// terminal and renders nothing visible.
 			cmd = tea.Batch(cmd, tea.Printf("\a"))
+		}
+		if m.pendingNotify != "" {
+			cmd = tea.Batch(cmd, notifyCmd(m.pendingNotify))
+			m.pendingNotify = ""
 		}
 		return m, cmd
 

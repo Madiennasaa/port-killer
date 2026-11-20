@@ -52,24 +52,26 @@ func TestGuardNotifyText(t *testing.T) {
 	}
 }
 
-// TestCheckGuardNotifiesOnNewViolation: a first-of-its-kind violation fires the
-// notify seam and raises the pending-bell flag; a repeat of the same
-// violation must not notify again.
+// TestCheckGuardNotifiesOnNewViolation: a first-of-its-kind violation queues
+// a notification and raises the pending-bell flag; a repeat of the same
+// violation must not notify again. The notification itself is sent by the
+// portsMsg handler as a command (see TestGuardNotifyRunsOffTheUpdateLoop).
 func TestCheckGuardNotifiesOnNewViolation(t *testing.T) {
-	old := notifySend
+	withTempHome(t)
 	var calls []string
-	notifySend = func(title, body string) error {
-		calls = append(calls, title+"|"+body)
-		return nil
+	take := func(m *model) {
+		if m.pendingNotify != "" {
+			calls = append(calls, m.pendingNotify)
+			m.pendingNotify = ""
+		}
 	}
-	t.Cleanup(func() { notifySend = old })
-
 	m := model{
 		guard:     []Rule{{Port: "5432", Owner: "pg"}},
 		guardSeen: map[string]bool{},
 		all:       []PortItem{{Proto: "tcp", Port: "5432", PID: "9", Process: "redis"}},
 	}
 	m.checkGuardNow()
+	take(&m)
 	if len(calls) != 1 {
 		t.Fatalf("notify calls = %d, want 1 (%v)", len(calls), calls)
 	}
@@ -78,6 +80,7 @@ func TestCheckGuardNotifiesOnNewViolation(t *testing.T) {
 	}
 	// Same violation on the next tick: deduped and no repeat notification.
 	m.checkGuardNow()
+	take(&m)
 	if len(calls) != 1 {
 		t.Errorf("notify calls after repeat = %d, want 1", len(calls))
 	}
@@ -86,6 +89,7 @@ func TestCheckGuardNotifiesOnNewViolation(t *testing.T) {
 	m.checkGuardNow()
 	m.all = []PortItem{{Proto: "tcp", Port: "5432", PID: "9", Process: "redis"}}
 	m.checkGuardNow()
+	take(&m)
 	if len(calls) != 2 {
 		t.Errorf("notify calls after reappear = %d, want 2", len(calls))
 	}

@@ -261,7 +261,8 @@ func (m model) normalKey(key string) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q", "f10":
 		return m, tea.Quit
 	case "r", "f5":
-		return m, refreshCmd
+		cmd := m.scanCmd()
+		return m, cmd
 	}
 	if nm, handled := m.moveKey(key); handled {
 		m = nm

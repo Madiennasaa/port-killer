@@ -13,6 +13,7 @@ const messageTTL = 10 * time.Second
 type portsMsg struct {
 	Items []PortItem
 	Err   error
+	seq   int // scanCmd's sequence number; 0 = unsequenced
 }
 
 const msgHealthPanic = "Health check panicked, skipped this cycle."
@@ -95,6 +96,14 @@ func killProjectCmd(project string, targets []PortItem) tea.Cmd {
 func refreshCmd() tea.Msg {
 	items, err := scanPorts()
 	return portsMsg{Items: items, Err: err}
+}
+
+// notifyCmd sends a guard desktop notification off the Update loop.
+func notifyCmd(body string) tea.Cmd {
+	return func() tea.Msg {
+		_ = notifySend("portkiller guard", body)
+		return nil
+	}
 }
 
 // checkHealth is a seam so healthCmd's recover path is testable.
