@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,10 @@ type PortItem struct {
 	// the user portkiller runs as), so stop/start run under that account.
 	ctrUser string
 
+	// ssUsers is the raw users:((...)) field the row was parsed from, kept
+	// so verifyOwners can check the claimed owner against /proc.
+	ssUsers string
+
 	// startTime is the kernel jiffie timestamp of the owning process, used to
 	// refuse a kill when the PID has been reused. Unexported: it is an
 	// implementation detail, not part of the --json contract.
@@ -54,6 +59,7 @@ func scanPorts() ([]PortItem, error) {
 		scanErr = fmt.Errorf("ss -tulnp: %w", err)
 	}
 
+	items = verifyOwners(items, procComm)
 	items = append(items, containerPorts()...)
 	items = dropContainerProxies(items)
 	fillUptime(items)
@@ -106,7 +112,7 @@ func ssItems(fields []string, info string) []PortItem {
 	if _, err := parsePort(port); err != nil {
 		return nil
 	}
-	refs := parseProcessInfos(info)
+	refs := ssCandidates(info)
 	var out []PortItem
 	for _, r := range refs {
 		if r[1] == "docker-proxy" {
@@ -119,6 +125,7 @@ func ssItems(fields []string, info string) []PortItem {
 			Process: r[1],
 			PID:     r[0],
 			Source:  "host",
+			ssUsers: info,
 		})
 	}
 	return out
@@ -303,6 +310,65 @@ func nextProcRef(info string) ([2]string, string, bool) {
 		return [2]string{}, "", false
 	}
 	return [2]string{digits[:n], name}, digits[n:], true
+}
+
+// ssPIDRe finds every pid=N entry in a users:(...) field.
+var ssPIDRe = regexp.MustCompile(`pid=(\d+)[,)]`)
+
+// ssCandidates (pure) lists the possible owners in a users:(...) field: the
+// naive (pid, name) pairs, plus any other pid=N entry with an empty name. ss
+// prints comm unescaped, so a name containing `",pid=` can hide the real
+// owner's entry from the naive parse; verifyOwners settles who is real.
+func ssCandidates(info string) [][2]string {
+	refs := parseProcessInfos(info)
+	seen := map[string]bool{}
+	for _, r := range refs {
+		seen[r[0]] = true
+	}
+	for _, m := range ssPIDRe.FindAllStringSubmatch(info, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			refs = append(refs, [2]string{m[1], ""})
+		}
+	}
+	return refs
+}
+
+// procComm reads /proc/<pid>/comm without its trailing newline; ok is false
+// when the process is gone.
+func procComm(pid string) (string, bool) {
+	b, err := procFile("/proc/" + pid + "/comm")
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSuffix(string(b), "\n"), true
+}
+
+// verifyOwners keeps a host row only when /proc confirms its owner: the pid
+// still exists and ss's users field holds exactly ("<its comm>",pid=<pid>,
+// (ss cuts the name at the first ")", as it parses /proc/<pid>/stat). This
+// stops a process named `x",pid=812,fd=` from pinning its socket on pid 812,
+// which a root portkiller would then stop, and recovers its real pid and
+// name. Rows whose process exited mid-scan are dropped too.
+func verifyOwners(items []PortItem, comm func(string) (string, bool)) []PortItem {
+	out := items[:0]
+	for _, it := range items {
+		if it.Source != "host" {
+			out = append(out, it)
+			continue
+		}
+		c, ok := comm(it.PID)
+		if !ok {
+			continue
+		}
+		name, _, _ := strings.Cut(c, ")")
+		if name == "docker-proxy" || !strings.Contains(it.ssUsers, `("`+name+`",pid=`+it.PID+`,`) {
+			continue
+		}
+		it.Process = name
+		out = append(out, it)
+	}
+	return out
 }
 
 func parseProcessInfo(info string) (string, string) {
