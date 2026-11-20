@@ -13,15 +13,16 @@ test:
 cover:
 	go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
 
-# cover-gate fails the build when statement coverage drops below 100% and
-# prints the uncovered blocks so a host-dependent gap is visible in CI logs.
+# cover-gate fails the build when any statement block is uncovered and prints
+# those blocks so a host-dependent gap is visible in CI logs. It checks the
+# blocks, not the rounded total: one missed statement still reads "100.0%".
 cover-gate:
 	go test -coverprofile=coverage.out ./... > /dev/null
-	@total=$$(go tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
-	echo "statement coverage: $$total%"; \
-	if awk -v c="$$total" 'BEGIN { exit (c >= 100) ? 0 : 1 }'; then exit 0; fi; \
+	@total=$$(go tool cover -func=coverage.out | tail -1 | awk '{print $$3}'); \
+	echo "statement coverage: $$total"; \
+	if ! grep -qE ' 0$$' coverage.out; then exit 0; fi; \
 	echo "uncovered blocks:"; \
-	grep -E ' 0$$' coverage.out || true; \
+	grep -E ' 0$$' coverage.out; \
 	exit 1
 
 fmt:

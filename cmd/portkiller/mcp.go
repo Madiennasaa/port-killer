@@ -225,10 +225,10 @@ var errUnknownTool = errors.New("unknown tool")
 // misspelled dry_run ("dryRun") must not silently turn a preview into a
 // real stop.
 func checkToolArgs(name string, raw json.RawMessage) error {
+	// callTool's typed decode already succeeded, so raw is an object or null
+	// (a nil map, nothing to check).
 	var keys map[string]json.RawMessage
-	if json.Unmarshal(raw, &keys) != nil {
-		return nil // not an object: the typed decode reports it
-	}
+	_ = json.Unmarshal(raw, &keys)
 	for _, t := range mcpTools() {
 		if t["name"] != name {
 			continue

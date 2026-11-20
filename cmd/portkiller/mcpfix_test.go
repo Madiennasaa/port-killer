@@ -119,3 +119,14 @@ func TestMCPDestructiveArgsAreStrict(t *testing.T) {
 		t.Errorf("list_ports bad port: %q", text)
 	}
 }
+
+// TestMCPNonObjectArguments: arguments that are not an object are refused
+// by the typed decode; null means "no arguments".
+func TestMCPNonObjectArguments(t *testing.T) {
+	if text, isErr := callText(t, mcpServer{}, "stop_port", `[1]`); !isErr || !strings.Contains(text, "invalid arguments") {
+		t.Errorf("array arguments: %q isErr=%v", text, isErr)
+	}
+	if text, isErr := callText(t, mcpServer{}, "port_history", `null`); isErr {
+		t.Errorf("null arguments: %q", text)
+	}
+}
