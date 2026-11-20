@@ -84,15 +84,29 @@ func splitAddr(localAddr string) (addr, port string, ok bool) {
 	return localAddr[:i], localAddr[i+1:], true
 }
 
+// ssUsers returns the raw users:((...)) part of an `ss` line. It is cut from
+// the line itself, not from its whitespace-split fields, because a process
+// name may contain spaces ("Web Content", "tmux: server").
+func ssUsers(line string) string {
+	if i := strings.Index(line, "users:("); i >= 0 {
+		return line[i:]
+	}
+	return ""
+}
+
 // ssItems converts one `ss` line into a PortItem per owning process, since a
-// socket may be shared by several pids (SO_REUSEPORT). Lines without process
-// info and docker-proxy listeners (owned by the docker source) are dropped.
-func ssItems(fields []string) []PortItem {
+// socket may be shared by several pids (SO_REUSEPORT). info is the line's
+// users:(...) part. Lines without process info, a non-numeric port and
+// docker-proxy listeners (owned by the docker source) are dropped.
+func ssItems(fields []string, info string) []PortItem {
 	addr, port, ok := splitAddr(fields[4])
 	if !ok {
 		return nil
 	}
-	refs := parseProcessInfos(fields[len(fields)-1])
+	if _, err := parsePort(port); err != nil {
+		return nil
+	}
+	refs := parseProcessInfos(info)
 	var out []PortItem
 	for _, r := range refs {
 		if r[1] == "docker-proxy" {
@@ -121,7 +135,7 @@ func parseSS(out string) []PortItem {
 		if !ssListening(fields) {
 			continue
 		}
-		for _, it := range ssItems(fields) {
+		for _, it := range ssItems(fields, ssUsers(line)) {
 			key := it.Proto + "-" + it.Port + "-" + it.PID
 			if seen[key] {
 				continue
