@@ -338,6 +338,9 @@ func hostPID(it PortItem) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if err := checkSignalTarget(pid); err != nil {
+		return 0, err
+	}
 	if it.startTime != 0 {
 		if cur, ok := readStartTime(pid); ok && cur != it.startTime {
 			return 0, fmt.Errorf("pid %d has been reused; refusing to stop it", pid)

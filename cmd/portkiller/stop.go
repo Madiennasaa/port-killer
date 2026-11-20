@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -78,9 +80,26 @@ var procGone = func(pid int) bool {
 	return state == 'Z' || state == 'X'
 }
 
+// checkSignalTarget refuses pids that must never be signalled: 0 and
+// negatives address process groups (kill(-1) reaches every process), 1 is
+// init (systemd socket activation lists it as a listener), and portkiller's
+// own pid would end the session mid-stop.
+func checkSignalTarget(pid int) error {
+	if pid <= 1 {
+		return fmt.Errorf("refusing to signal pid %d", pid)
+	}
+	if pid == os.Getpid() {
+		return fmt.Errorf("refusing to signal portkiller itself (pid %d)", pid)
+	}
+	return nil
+}
+
 // stopPID sends SIGTERM, waits up to killGrace, then escalates to SIGKILL.
 // force skips the graceful phase.
 func stopPID(pid int, force bool) error {
+	if err := checkSignalTarget(pid); err != nil {
+		return err
+	}
 	if force {
 		return sendSignal(pid, syscall.SIGKILL)
 	}
