@@ -66,8 +66,10 @@ func watchEvents(port string, prev, cur []PortItem, now time.Time, rules []Rule)
 
 // runWatch scans on every interval and prints port appear/vanish/guard events.
 // The seed pass is silent: nothing existed before it, so every listener would
-// otherwise be reported as "appeared" on startup. A scan failure becomes a
-// stderr warning and the previous snapshot is kept.
+// otherwise be reported as "appeared" on startup. A guard violation is
+// printed (and notified) once when it starts, not on every scan. A scan
+// failure becomes a stderr warning and that pass reports nothing: a partial
+// result (containers only, say) would flood false "vanished" events.
 func runWatch(
 	ctx context.Context,
 	port string,
@@ -81,29 +83,34 @@ func runWatch(
 ) {
 	var prev []PortItem
 	seeded := false
+	guardSeen := map[string]bool{}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		items, err := scan()
 		if err != nil {
 			warn(err.Error())
-		}
-		for _, e := range watchEvents(port, prev, items, time.Now(), rules) {
-			// The seed pass stays silent for appear/vanish: nothing existed
-			// "before" it, so every listener would show up as appeared. Guard
-			// violations still surface: they are true right now.
-			if !seeded && e.Kind != "guard" {
-				continue
+		} else {
+			cur := map[string]bool{}
+			for _, e := range watchEvents(port, prev, items, time.Now(), rules) {
+				if e.Kind == "guard" {
+					// Guard violations surface even on the seed pass (they
+					// are true right now), but only once per violation.
+					k := e.Proto + "|" + e.Port + "|" + e.PID
+					cur[k] = true
+					if guardSeen[k] {
+						continue
+					}
+				} else if !seeded {
+					continue
+				}
+				print(formatEvent(e))
+				if notify {
+					_ = notifyFn("portkiller", formatEvent(e))
+				}
 			}
-			print(formatEvent(e))
-			if notify {
-				_ = notifyFn("portkiller", formatEvent(e))
-			}
-		}
-		seeded = true
-		// Keep the good snapshot on a failed scan so a partial result cannot
-		// flood "vanished" events.
-		if err == nil {
+			guardSeen = cur
+			seeded = true
 			prev = items
 		}
 		select {

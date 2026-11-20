@@ -247,3 +247,40 @@ func TestCliWatchBadPortExitsTwo(t *testing.T) {
 		t.Errorf("exit code = %d, want 2", code)
 	}
 }
+
+// TestRunWatchFailedScanAndRepeatedGuard: a failed scan that still returns a
+// partial result must not report the missing listeners as vanished, and a
+// guard violation that persists across scans is printed only once.
+func TestRunWatchFailedScanAndRepeatedGuard(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host := PortItem{Proto: "tcp", Port: "3000", PID: "1", Process: "node"}
+	squat := PortItem{Proto: "tcp", Port: "5432", PID: "9", Process: "redis"}
+	scans := 0
+	var lines []string
+	runWatch(ctx, "", false, func() ([]PortItem, error) {
+		scans++
+		switch scans {
+		case 2:
+			// ss failed: only the squatter (say, a container) came back.
+			return []PortItem{squat}, errors.New("ss down")
+		case 4:
+			cancel()
+		}
+		return []PortItem{host, squat}, nil
+	}, func(l string) { lines = append(lines, l) }, time.Millisecond,
+		[]Rule{{Port: "5432", Owner: "postgres"}},
+		func(string, string) error { return nil }, func(string) {})
+	guards := 0
+	for _, l := range lines {
+		if strings.Contains(l, "vanished") {
+			t.Errorf("failed scan reported %q", l)
+		}
+		if strings.Contains(l, "guard") {
+			guards++
+		}
+	}
+	if guards != 1 {
+		t.Errorf("guard printed %d times, want once: %v", guards, lines)
+	}
+}
