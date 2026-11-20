@@ -127,9 +127,12 @@ listener table cannot be read (`ss` fails), the port counts as still taken, so
 `--wait` fails and nothing is relaunched.
 
 Under sudo, state files live in the invoking user's home and are handed to
-that user. portkiller refuses to write through a symlink placed at any of those
-paths, and skips them entirely when no home directory can be determined rather
-than writing into the current directory.
+that user. portkiller refuses to write through a symlink or hard link placed
+at any of those paths, will not read a FIFO or device planted there (and caps
+how much it reads), and replaces files atomically. The history and restart
+logs are private (`0600`, in a `0700` state directory), and each restart log
+is trimmed once it passes 5 MiB. When no home directory can be determined the
+files are skipped entirely rather than written into the current directory.
 
 Unknown flags, invalid ports, two commands at once (`--list --kill 80`),
 `--json` with `--plain`, and options without the command they belong to
@@ -161,4 +164,4 @@ Generic client config:
 | `stop_port` | Stop by `ports` and/or `names` (`force`, `signal`, `dry_run`); flags pm2/supervisord-managed listeners |
 | `restart_port` | Stop and relaunch by `ports` and/or `names` (`force`, `dry_run`), waiting until the port is free |
 
-The server is read-only by default: `stop_port` and `restart_port` only preview (`dry_run`) until you start it with `--mcp --allow-kill`. It never re-runs itself under sudo (stdio belongs to the client), so without root, listeners owned by other users show no PID.
+Requests with unknown arguments (a mistyped `dryRun`, say) are rejected rather than ignored, so a typo can never turn a preview into a real stop. The server is read-only by default: `stop_port` and `restart_port` only preview (`dry_run`) until you start it with `--mcp --allow-kill`. It never re-runs itself under sudo (stdio belongs to the client), so without root, listeners owned by other users show no PID.

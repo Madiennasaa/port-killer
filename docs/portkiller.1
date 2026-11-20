@@ -83,6 +83,7 @@ scan prints a warning and reports nothing for that pass.
 .BR \-\-mcp " [\\fI\-\-allow\-kill\\fP]"
 Serve the Model Context Protocol on stdin/stdout for AI agents, with the
 tools list_ports, free_port, port_history, stop_port and restart_port.
+Unknown tool arguments are rejected.
 stop_port and restart_port only preview unless \fI--allow-kill\fP is given. Runs with the caller's
 privileges and never re-executes under sudo.
 .TP
@@ -188,8 +189,11 @@ Process names hidden from the TUI table (H toggles, U shows them).
 stdout and stderr of a process relaunched by \fI--restart\fP or R.
 .PP
 Under sudo these paths are in the invoking user's home and are owned by
-that user. portkiller will not write through a symlink at any of them, and
-writes none of them when no home directory can be found.
+that user. portkiller will not write through a symlink or hard link at any
+of them, will not read a FIFO or device there, and replaces them
+atomically. The history and restart logs are mode 0600 in a 0700 state
+directory, a restart log is trimmed past 5 MiB, and none of the files is
+written when no home directory can be found.
 .SH SEE ALSO
 .BR ss (8),
 .BR docker (1),
