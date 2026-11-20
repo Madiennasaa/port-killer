@@ -83,7 +83,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		(msg.Button != tea.MouseButtonLeft && msg.Button != tea.MouseButtonRight) {
 		return m, nil
 	}
-	if msg.Y == m.height-1 {
+	if msg.Y == m.height-1 && m.height >= 2 {
 		if nm, cmd, ok := m.footerClick(msg.X); ok {
 			return nm, cmd
 		}
@@ -181,9 +181,9 @@ func (m model) moveKey(key string) (model, bool) {
 	case "down", "j":
 		m.cursor++
 	case "pgup":
-		m.cursor -= m.rows()
+		m.cursor -= m.pageRows()
 	case "pgdown":
-		m.cursor += m.rows()
+		m.cursor += m.pageRows()
 	case "home", "g":
 		m.cursor = 0
 	case "end", "G":

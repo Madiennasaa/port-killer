@@ -186,8 +186,11 @@ func TestSortNum(t *testing.T) {
 
 func TestRowsAndClamp(t *testing.T) {
 	m := model{height: 4}
-	if m.rows() != 1 {
-		t.Fatalf("degenerate height must clamp to 1 row, got %d", m.rows())
+	if m.rows() != 0 || m.pageRows() != 1 {
+		t.Fatalf("a 4-row terminal has no table rows (got %d) but pages by 1 (got %d)", m.rows(), m.pageRows())
+	}
+	if (model{height: 0}).barRows() != 1 {
+		t.Fatal("a zero-height model still reserves the header")
 	}
 	// clamp resets a cursor that sits past the end of the view.
 	m = testModel()

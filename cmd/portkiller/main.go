@@ -218,12 +218,35 @@ func (m *model) rebuild() {
 	m.clamp()
 }
 
+// barRows is how many of the fixed bars fit: header, footer, status line and
+// info bar, granted in that order so a tiny terminal keeps the header on top
+// and the clickable footer on the last row.
+func (m model) barRows() int {
+	switch {
+	case m.height >= 4:
+		return 4
+	case m.height < 1:
+		return 1
+	}
+	return m.height
+}
+
+// rows is how many table rows fit; 0 on a terminal too small for any.
 func (m model) rows() int {
-	r := m.height - 4 - m.detailRows() // header + status + info + footer
-	if r < 1 {
-		r = 1
+	r := m.height - m.barRows() - m.detailRows()
+	if r < 0 {
+		r = 0
 	}
 	return r
+}
+
+// pageRows is the scroll step and window size: at least one row, so the
+// cursor and offset stay consistent while no row is visible.
+func (m model) pageRows() int {
+	if r := m.rows(); r > 0 {
+		return r
+	}
+	return 1
 }
 
 func (m *model) clamp() {
@@ -233,7 +256,7 @@ func (m *model) clamp() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
-	r := m.rows()
+	r := m.pageRows()
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}

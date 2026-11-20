@@ -169,8 +169,10 @@ func (m *model) refreshDetail() {
 	m.detail = readDetail(m.view[m.cursor])
 }
 
+// detailRows is the detail panel's height, or 0 when it is off or would
+// leave no room for a single table row.
 func (m model) detailRows() int {
-	if m.showDetail {
+	if m.showDetail && m.height >= 4+detailHeight+1 {
 		return detailHeight
 	}
 	return 0

@@ -179,7 +179,7 @@ func (m model) View() string {
 		b.WriteString(m.fullWidth(st, line) + "\n")
 		drawn++
 	}
-	if len(m.view) == 0 {
+	if len(m.view) == 0 && r > 0 {
 		b.WriteString(m.fullWidth(normalStyle, " No matching ports / root access may be required.") + "\n")
 		drawn++
 	}
@@ -187,7 +187,7 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	if m.showDetail {
+	if m.detailRows() > 0 {
 		var dl []string
 		if len(m.view) > 0 {
 			dl = detailLines(m.view[m.cursor], m.detail)
@@ -201,7 +201,31 @@ func (m model) View() string {
 		}
 	}
 
-	// Baris status / konfirmasi / filter
+	if m.height < 2 {
+		// Room for the header only.
+		return strings.TrimSuffix(b.String(), "\n")
+	}
+	if m.height >= 3 {
+		b.WriteString(m.statusLine() + "\n")
+	}
+	if m.height >= 4 {
+		b.WriteString(m.infoLine() + "\n")
+	}
+
+	// Footer
+	var fb strings.Builder
+	for _, f := range footerKeys {
+		fb.WriteString(footerItem(f.key, f.label))
+	}
+	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(fb.String()))
+
+	return b.String()
+}
+
+// statusLine is the confirmation prompt, search field, status message or
+// guard warning, in that priority, rendered as one full-width row.
+func (m model) statusLine() string {
+	var b strings.Builder
 	switch {
 	case m.mode == modeConfirmProject:
 		h, d := projectSummary(m.ptarget)
@@ -245,11 +269,13 @@ func (m model) View() string {
 	default:
 		if len(m.violations) > 0 {
 			b.WriteString(m.fullWidth(warnStyle, violationText(m.violations)) + "\n")
-		} else {
-			b.WriteString("\n")
 		}
 	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
 
+// infoLine is the counts/proto/sort/filter/uptime bar.
+func (m model) infoLine() string {
 	// Info bar (host facts come from the tick cache: View does no I/O)
 	root := ""
 	if m.notRoot {
@@ -269,16 +295,7 @@ func (m model) View() string {
 	}
 	info := fmt.Sprintf(" %d port | orphan: %d%s%s | proto: %s | sort: %s | filter: %q | up: %s%s",
 		len(m.view), nOrphan, orphanFlag, m.markHiddenInfo(), protoNames[m.proto], sortNames[m.sortBy], m.filter, up, root)
-	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
-
-	// Footer
-	var fb strings.Builder
-	for _, f := range footerKeys {
-		fb.WriteString(footerItem(f.key, f.label))
-	}
-	b.WriteString(lipgloss.NewStyle().MaxWidth(m.width).Render(fb.String()))
-
-	return b.String()
+	return m.fullWidth(titleStyle, info)
 }
 
 // markHiddenInfo is the info-bar fragment for marked and hidden rows; empty
