@@ -112,7 +112,7 @@ func openNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
 }
 
 // maxStateFile caps how much of a state or project file is read.
-const maxStateFile = 16 << 20
+var maxStateFile = 16 << 20
 
 // readRegular reads at most maxStateFile bytes of path, refusing FIFOs,
 // devices and directories, so a planted /dev/zero link or a FIFO can neither
@@ -128,7 +128,7 @@ func readRegular(path string) ([]byte, error) {
 	if err := syscall.Fstat(int(f.Fd()), &st); err != nil || st.Mode&syscall.S_IFMT != syscall.S_IFREG {
 		return nil, fmt.Errorf("%s: not a regular file", path)
 	}
-	return io.ReadAll(io.LimitReader(f, maxStateFile))
+	return io.ReadAll(io.LimitReader(f, int64(maxStateFile)))
 }
 
 // mkdirAllOwned is os.MkdirAll that hands every directory it creates to the

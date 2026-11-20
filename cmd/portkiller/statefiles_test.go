@@ -97,6 +97,9 @@ func TestGitHeadDeviceIsNotRead(t *testing.T) {
 
 // TestReadRegularBounds: oversized files are cut at the cap.
 func TestReadRegularBounds(t *testing.T) {
+	old := maxStateFile
+	t.Cleanup(func() { maxStateFile = old })
+	maxStateFile = 64
 	p := filepath.Join(t.TempDir(), "big")
 	if err := os.WriteFile(p, make([]byte, maxStateFile+10), 0o644); err != nil {
 		t.Fatal(err)
