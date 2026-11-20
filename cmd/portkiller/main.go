@@ -104,6 +104,11 @@ type model struct {
 	marked  map[string]bool
 	btarget []PortItem
 
+	// upText and notRoot cache the info bar's host facts; refreshInfo
+	// updates them on each tick so View stays free of I/O.
+	upText  string
+	notRoot bool
+
 	// pendingBell marks a newly detected guard violation that must ring the
 	// terminal bell on the next Update, then be consumed.
 	pendingBell bool
@@ -119,6 +124,7 @@ func initialModel() model {
 	m.guard = loadGuard()
 	m.hidden = loadHidden()
 	m.guardSeen = map[string]bool{}
+	m.refreshInfo()
 	m.checkGuardNow()
 	m.applyHealth()
 	m.rebuild()
@@ -432,6 +438,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clamp()
 
 	case tickMsg:
+		m.refreshInfo()
 		if m.messageExpired() {
 			m.message, m.isErr, m.msgAt = "", false, time.Time{}
 		}

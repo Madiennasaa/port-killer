@@ -83,7 +83,15 @@ func sysUptimeFrom(b []byte, err error) string {
 }
 
 // mustReadFile is a tiny seam so sysUptime's parse path is testable.
-func mustReadFile(p string) ([]byte, error) { return os.ReadFile(p) }
+var mustReadFile = os.ReadFile
+
+// refreshInfo caches the info bar's host facts (uptime, root or not). It runs
+// at start and on every tick so View, which renders on every key press and
+// message, never touches /proc or makes a syscall.
+func (m *model) refreshInfo() {
+	m.upText = sysUptime()
+	m.notRoot = effectiveUID() != 0
+}
 
 func healthText(it PortItem) string {
 	switch it.Health {
@@ -242,10 +250,14 @@ func (m model) View() string {
 		}
 	}
 
-	// Info bar
+	// Info bar (host facts come from the tick cache: View does no I/O)
 	root := ""
-	if os.Geteuid() != 0 {
+	if m.notRoot {
 		root = " | not root"
+	}
+	up := m.upText
+	if up == "" {
+		up = "?"
 	}
 	nOrphan := len(orphanItems(m.all))
 	nOrphanView := len(orphanItems(m.view))
@@ -256,7 +268,7 @@ func (m model) View() string {
 		orphanFlag = " | orphans hidden by filter"
 	}
 	info := fmt.Sprintf(" %d port | orphan: %d%s%s | proto: %s | sort: %s | filter: %q | up: %s%s",
-		len(m.view), nOrphan, orphanFlag, m.markHiddenInfo(), protoNames[m.proto], sortNames[m.sortBy], m.filter, sysUptime(), root)
+		len(m.view), nOrphan, orphanFlag, m.markHiddenInfo(), protoNames[m.proto], sortNames[m.sortBy], m.filter, up, root)
 	b.WriteString(m.fullWidth(titleStyle, info) + "\n")
 
 	// Footer
