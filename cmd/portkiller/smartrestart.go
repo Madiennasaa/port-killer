@@ -87,6 +87,12 @@ func cliRestart(args []string, force bool) {
 		exitProcess(2)
 		return
 	}
+	ports, err := normalizePorts(ports)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "--restart:", err)
+		exitProcess(2)
+		return
+	}
 	opts, err := parseKillOpts(args, force)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -12,6 +12,9 @@ import (
 // Listing other users' processes and killing them does; help, version, and
 // unknown flags (which exit with an error) do not.
 func cliNeedsRoot(args []string) bool {
+	if cliArgError(args) != "" {
+		return false
+	}
 	for _, a := range args {
 		switch a {
 		case "--help", "-h", "--version", "-v", "--completions", "--mcp":
@@ -54,6 +57,11 @@ func runCLI(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
+	if msg := cliArgError(args); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+		exitProcess(2)
+		return true
+	}
 	switch {
 	case hasFlag(args, "--help") || hasFlag(args, "-h"):
 		cliHelp()
@@ -76,7 +84,9 @@ func runCLI(args []string) bool {
 	case hasFlag(args, "--kill") || hasFlag(args, "--kill-name"):
 		cliKill(args, hasFlag(args, "--force"))
 	default:
-		return rejectUnknownFlag(args)
+		// cliArgError rejected every dash argument without a mode, so only
+		// bare words remain: the caller wanted the TUI.
+		return false
 	}
 	return true
 }
@@ -160,18 +170,6 @@ var (
 	marshalPorts = json.MarshalIndent
 )
 
-// rejectUnknownFlag exits 2 on a stray dash-flag; a bare non-flag argument
-// means the caller wanted the TUI, so report "not handled" instead.
-func rejectUnknownFlag(args []string) bool {
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			fmt.Fprintf(os.Stderr, "unknown flag %s (try --help)\n", a)
-			exitProcess(2)
-		}
-	}
-	return false
-}
-
 func cliList(asJSON, plain bool) {
 	items, err := activePorts()
 	if err != nil {
@@ -219,6 +217,12 @@ func cliKill(args []string, force bool) {
 	names := flagArgs(args, "--kill-name")
 	if len(ports) == 0 && len(names) == 0 {
 		fmt.Fprintln(os.Stderr, "--kill needs a port number (or --kill-name a process name)")
+		exitProcess(2)
+		return
+	}
+	ports, err := normalizePorts(ports)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "--kill:", err)
 		exitProcess(2)
 		return
 	}

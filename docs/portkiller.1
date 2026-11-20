@@ -166,7 +166,9 @@ no listener, a port was still taken after \fI--wait\fP, or a
 \fI--restart\fP target could not be relaunched.
 .TP
 .B 2
-Bad or unknown argument.
+Bad or unknown argument: an unknown flag, an invalid port, two commands
+at once, \fI--json\fP with \fI--plain\fP, or an option without the command
+it applies to.
 .SH ENVIRONMENT
 .TP
 .B NO_COLOR

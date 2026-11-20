@@ -1892,11 +1892,11 @@ func TestRestartOneDockerFailure(t *testing.T) {
 	}
 }
 
-// ---- cli.go: rejectUnknownFlag's non-flag fallthrough ----
+// ---- cli.go: a bare argument falls through to the TUI ----
 
-func TestRejectUnknownFlagBareArg(t *testing.T) {
+func TestRunCLIBareArg(t *testing.T) {
 	// A bare (non-dash) argument means "start the TUI": false, no exit.
-	if rejectUnknownFlag([]string{"foo"}) {
+	if runCLI([]string{"foo"}) {
 		t.Error("a bare argument must report not-handled")
 	}
 }

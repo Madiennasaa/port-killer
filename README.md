@@ -131,7 +131,10 @@ that user. portkiller refuses to write through a symlink placed at any of those
 paths, and skips them entirely when no home directory can be determined rather
 than writing into the current directory.
 
-Unknown flags exit with status 2 instead of silently starting the TUI.
+Unknown flags, invalid ports, two commands at once (`--list --kill 80`),
+`--json` with `--plain`, and options without the command they belong to
+(`--force` without `--kill`) exit with status 2 before anything is scanned or
+stopped.
 `--help`, `--version`, `--free`, `--history`, `--completions` and `--mcp` run
 without a sudo prompt; the TUI, `--list`, `--kill`, `--kill-name`, `--restart`
 and `--watch` re-run themselves under sudo when it is available.
