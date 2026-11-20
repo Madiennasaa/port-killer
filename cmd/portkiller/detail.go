@@ -126,7 +126,7 @@ func helpLines() []string {
 		" F9 or Enter                Stop (SIGTERM / container stop) + impact",
 		" F8 or K                    Force kill (SIGKILL)",
 		" i or Tab                   Detail panel for selected row",
-		" Space                      Mark row; F9/F8 then stop every marked row",
+		" Space                      Mark row; F9/F8 then stop the visible marked rows",
 		" b                          Open http://localhost:<port> in the browser",
 		" H / U                      Hide/unhide process name / show hidden rows",
 		" c                          Check port conflicts (compose/.env in current dir)",

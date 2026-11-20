@@ -302,8 +302,17 @@ func (m model) infoLine() string {
 // when neither is in use.
 func (m model) markHiddenInfo() string {
 	s := ""
-	if n := len(m.markedItems()); n > 0 {
-		s += fmt.Sprintf(" | marked: %d", n)
+	shown := len(m.markedItems())
+	total := 0
+	for _, it := range m.all {
+		if m.marked[itemKey(it)] {
+			total++
+		}
+	}
+	if total > shown {
+		s += fmt.Sprintf(" | marked: %d (+%d filtered out)", shown, total-shown)
+	} else if shown > 0 {
+		s += fmt.Sprintf(" | marked: %d", shown)
 	}
 	hidden := 0
 	for _, it := range m.all {
