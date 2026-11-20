@@ -2,12 +2,18 @@ package main
 
 import (
 	"fmt"
-	"github.com/charmbracelet/lipgloss"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
+
+// plainCursor reports whether styles render as plain text (NO_COLOR, a dumb
+// terminal), where the highlighted cursor row would be indistinguishable.
+var plainCursor = func() bool { return lipgloss.ColorProfile() == termenv.Ascii }
 
 // ---------- View ----------
 func pad(s string, w int) string {
@@ -158,12 +164,15 @@ func (m model) View() string {
 		}
 		if i == m.cursor {
 			st = selStyle
+			if plainCursor() {
+				line = ">" + line[1:]
+			}
 		}
 		b.WriteString(m.fullWidth(st, line) + "\n")
 		drawn++
 	}
 	if len(m.view) == 0 {
-		b.WriteString(" No matching ports / root access may be required.\n")
+		b.WriteString(m.fullWidth(normalStyle, " No matching ports / root access may be required.") + "\n")
 		drawn++
 	}
 	for ; drawn < r; drawn++ {
@@ -222,7 +231,9 @@ func (m model) View() string {
 		if m.isErr {
 			st = errStyle
 		}
-		b.WriteString(st.Render(" "+m.message) + "\n")
+		// fullWidth keeps a long or multi-line message (a command's stderr)
+		// on one row, so the footer stays on the last line for mouse clicks.
+		b.WriteString(m.fullWidth(st, " "+m.message) + "\n")
 	default:
 		if len(m.violations) > 0 {
 			b.WriteString(m.fullWidth(warnStyle, violationText(m.violations)) + "\n")

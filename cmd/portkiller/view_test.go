@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -201,3 +202,56 @@ func TestSysUptime(t *testing.T) {
 		t.Errorf("unexpected format %q", got)
 	}
 }
+
+// TestViewPlainCursor: without colors (NO_COLOR) the highlighted row would be
+// invisible, so the cursor row gets a ">" marker; with colors it does not.
+func TestViewPlainCursor(t *testing.T) {
+	old := plainCursor
+	defer func() { plainCursor = old }()
+	_ = old() // the production probe itself must not panic in a test binary
+	m := testModel()
+	m.width, m.height = 130, 24
+	m.cursor = 0
+	for _, plain := range []bool{true, false} {
+		plainCursor = func() bool { return plain }
+		rows := strings.Split(m.View(), "\n")
+		got := strings.HasPrefix(stripANSI(rows[1]), ">")
+		if got != plain {
+			t.Errorf("plain=%v: cursor row %q", plain, rows[1])
+		}
+		if strings.HasPrefix(stripANSI(rows[2]), ">") {
+			t.Errorf("plain=%v: non-cursor row marked: %q", plain, rows[2])
+		}
+	}
+}
+
+// TestViewLongMessageStaysOneLine: a multi-line or overlong status message
+// must not push the footer off the last row (mouse clicks map to it).
+func TestViewLongMessageStaysOneLine(t *testing.T) {
+	m := testModel()
+	m.width, m.height = 40, 12
+	m.message, m.isErr = "Failed x: "+strings.Repeat("err ", 30)+"\nsecond line", true
+	if n := strings.Count(m.View(), "\n"); n != m.height-1 {
+		t.Errorf("view has %d newlines, want %d", n, m.height-1)
+	}
+}
+
+// TestViewHelpFitsSmallTerminal: the help overlay never renders more rows
+// than the terminal has, so its header stays visible.
+func TestViewHelpFitsSmallTerminal(t *testing.T) {
+	m := testModel()
+	m.width, m.height = 60, 8
+	m.showHelp = true
+	out := m.View()
+	if n := strings.Count(out, "\n"); n > m.height {
+		t.Errorf("help view has %d rows on a %d-row terminal", n, m.height)
+	}
+	if !strings.Contains(out, "HELP") {
+		t.Errorf("help header missing: %q", out)
+	}
+}
+
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// stripANSI drops SGR sequences so assertions hold whatever the color profile.
+func stripANSI(s string) string { return ansiSeq.ReplaceAllString(s, "") }

@@ -150,7 +150,12 @@ func (m model) helpView() string {
 	if m.helpOverride != nil {
 		lines = m.helpOverride
 	}
-	for _, l := range lines {
+	for i, l := range lines {
+		// Stop before the terminal's last row: a taller view scrolls the
+		// header out of sight on a small terminal.
+		if i >= m.height-1 {
+			break
+		}
 		b.WriteString(m.fullWidth(normalStyle, l) + "\n")
 	}
 	return b.String()
