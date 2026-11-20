@@ -1,8 +1,12 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"syscall"
 )
@@ -54,8 +58,11 @@ func chownToSudoUser(paths ...string) {
 	if !ok {
 		return
 	}
-	chownPaths(paths, uid, gid)
+	_ = chownSeam(paths, uid, gid)
 }
+
+// chownSeam lets tests see which paths chownToSudoUser hands over.
+var chownSeam = chownPaths
 
 // chownIDs (pure): parse a user's uid/gid strings. A parse failure means a
 // broken NSS entry, and chowning to 0:0 would be worse than leaving it.
@@ -86,21 +93,89 @@ func chownPaths(paths []string, uid, gid int) error {
 }
 
 // openNoFollow is os.OpenFile that refuses a symlink as the final path
-// component. portkiller runs as root but writes into the invoking user's
-// home, where a symlink could otherwise redirect the write to any file.
+// component, and anything but a regular file with a single link. portkiller
+// runs as root but writes into the invoking user's home, where a symlink or a
+// hard link could otherwise redirect the write to any file, and a FIFO would
+// block it forever (hence O_NONBLOCK). Never pass O_TRUNC: it would apply
+// before the checks; replace files with writeFileAtomic instead.
 func openNoFollow(path string, flag int, perm os.FileMode) (*os.File, error) {
-	return os.OpenFile(path, flag|syscall.O_NOFOLLOW, perm)
+	f, err := os.OpenFile(path, flag|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, perm)
+	if err != nil {
+		return nil, err
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(int(f.Fd()), &st); err != nil || st.Mode&syscall.S_IFMT != syscall.S_IFREG || st.Nlink != 1 {
+		f.Close()
+		return nil, fmt.Errorf("%s: not a regular single-link file", path)
+	}
+	return f, nil
 }
 
-// writeFileNoFollow is os.WriteFile through openNoFollow.
-func writeFileNoFollow(path string, data []byte, perm os.FileMode) error {
-	f, err := openNoFollow(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+// maxStateFile caps how much of a state or project file is read.
+const maxStateFile = 16 << 20
+
+// readRegular reads at most maxStateFile bytes of path, refusing FIFOs,
+// devices and directories, so a planted /dev/zero link or a FIFO can neither
+// exhaust memory nor hang a scan. Symlinks are followed: reading through one
+// is harmless and dotfile managers rely on them.
+func readRegular(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var st syscall.Stat_t
+	if err := syscall.Fstat(int(f.Fd()), &st); err != nil || st.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		return nil, fmt.Errorf("%s: not a regular file", path)
+	}
+	return io.ReadAll(io.LimitReader(f, maxStateFile))
+}
+
+// mkdirAllOwned is os.MkdirAll that hands every directory it creates to the
+// sudo user (not just the last one, e.g. a missing ~/.local/state), and
+// re-hands dir itself in case an older version left it root-owned.
+func mkdirAllOwned(dir string, perm os.FileMode) error {
+	var created []string
+	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil {
+			break
+		}
+		created = append(created, d)
+	}
+	if err := os.MkdirAll(dir, perm); err != nil {
+		return err
+	}
+	chownToSudoUser(append(created, dir)...)
+	return nil
+}
+
+// writeFileAtomic replaces path with data through a temp file and a rename,
+// so readers never see a half-written file and a hard link or symlink at
+// path is replaced rather than written through. A non-regular path is
+// refused. The temp file is handed to the sudo user before the rename.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp*")
 	if err != nil {
 		return err
 	}
-	_, err = f.Write(data)
-	if cerr := f.Close(); err == nil {
-		err = cerr
+	tmp := f.Name()
+	_, werr := f.Write(data)
+	err = errors.Join(werr, f.Chmod(perm), f.Close(), refuseNonRegular(path))
+	if err == nil {
+		chownToSudoUser(tmp)
+		err = os.Rename(tmp, path)
 	}
-	return err
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// refuseNonRegular errors when path exists and is not a regular file.
+func refuseNonRegular(path string) error {
+	if fi, err := os.Lstat(path); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s: refusing to replace a non-regular file", path)
+	}
+	return nil
 }

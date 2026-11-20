@@ -213,17 +213,24 @@ func restartLogPath(r Restartable) string {
 	return filepath.Join(filepath.Dir(ev), "restart-"+safeFileName(r.Name)+".log")
 }
 
-// defaultOpenRestartLog creates the log file, making the state directory on
-// first use.
+// maxRestartLog is the size past which a restart log starts over.
+const maxRestartLog = 5 << 20
+
+// defaultOpenRestartLog creates the log file (private: it holds the
+// process's output), making the state directory on first use. A log over
+// maxRestartLog is emptied so repeated restarts cannot fill the disk.
 func defaultOpenRestartLog(path string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := mkdirAllOwned(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	chownToSudoUser(filepath.Dir(path), path)
+	if fi, err := f.Stat(); err == nil && fi.Size() > maxRestartLog {
+		_ = f.Truncate(0)
+	}
+	chownToSudoUser(path)
 	return f, nil
 }
 

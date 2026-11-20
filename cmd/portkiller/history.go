@@ -14,7 +14,7 @@ import (
 func loadEvents(path string) []Event {
 	lock := lockEvents(path, false)
 	defer unlockEvents(lock)
-	b, err := os.ReadFile(path)
+	b, err := readRegular(path)
 	if err != nil {
 		return nil
 	}

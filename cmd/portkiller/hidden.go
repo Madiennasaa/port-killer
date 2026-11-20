@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -26,7 +25,7 @@ func parseHidden(data string) map[string]bool {
 }
 
 func loadHidden() map[string]bool {
-	b, err := os.ReadFile(hiddenPath())
+	b, err := readRegular(hiddenPath())
 	if err != nil {
 		return map[string]bool{}
 	}
@@ -44,13 +43,9 @@ func saveHidden(path string, hidden map[string]bool) error {
 	if path == "" {
 		return errors.New("no home directory to save hidden processes in")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := mkdirAllOwned(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	data := "# process names hidden by portkiller (H toggles, U shows them)\n" + strings.Join(names, "\n") + "\n"
-	if err := writeFileNoFollow(path, []byte(data), 0o644); err != nil {
-		return err
-	}
-	chownToSudoUser(filepath.Dir(path), path)
-	return nil
+	return writeFileAtomic(path, []byte(data), 0o644)
 }

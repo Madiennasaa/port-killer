@@ -97,7 +97,7 @@ func guardPath() string {
 }
 
 func loadGuard() []Rule {
-	b, err := os.ReadFile(guardPath())
+	b, err := readRegular(guardPath())
 	if err != nil {
 		return nil
 	}

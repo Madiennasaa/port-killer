@@ -123,8 +123,8 @@ func TestStateWritesRefuseSymlinks(t *testing.T) {
 	if _, err := defaultOpenRestartLog(link); err == nil {
 		t.Error("restart log must refuse a symlink")
 	}
-	if err := writeFileNoFollow(link, []byte("x"), 0o644); err == nil {
-		t.Error("writeFileNoFollow must refuse a symlink")
+	if err := writeFileAtomic(link, []byte("x"), 0o644); err == nil {
+		t.Error("writeFileAtomic must refuse a symlink")
 	}
 	if err := saveHidden(link, map[string]bool{"x": true}); err == nil {
 		t.Error("saveHidden must refuse a symlink")
@@ -138,16 +138,16 @@ func TestStateWritesRefuseSymlinks(t *testing.T) {
 
 func TestWriteFileNoFollow(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "f")
-	if err := writeFileNoFollow(p, []byte("one two"), 0o644); err != nil {
+	if err := writeFileAtomic(p, []byte("one two"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileNoFollow(p, []byte("x"), 0o644); err != nil {
+	if err := writeFileAtomic(p, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(p); string(b) != "x" {
 		t.Fatalf("content = %q, want truncated rewrite", b)
 	}
-	if err := writeFileNoFollow(filepath.Join(p, "sub"), nil, 0o644); err == nil {
+	if err := writeFileAtomic(filepath.Join(p, "sub"), nil, 0o644); err == nil {
 		t.Error("a path under a file must fail")
 	}
 }

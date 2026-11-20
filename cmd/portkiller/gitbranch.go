@@ -1,13 +1,12 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 )
 
 // readGitFile is a seam so gitBranch can be tested against a fake tree.
-var readGitFile = os.ReadFile
+var readGitFile = readRegular
 
 // parseGitHead (pure) turns .git/HEAD contents into a branch name, or the
 // short commit for a detached HEAD. Anything else yields "".

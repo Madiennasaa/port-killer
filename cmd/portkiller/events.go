@@ -77,7 +77,7 @@ func lockEvents(path string, exclusive bool) *os.File {
 	if path == "" {
 		return nil
 	}
-	f, err := openNoFollow(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := openNoFollow(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil
 	}
@@ -110,12 +110,12 @@ func appendEvents(path string, evs []Event) {
 	if len(evs) == 0 || path == "" {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := mkdirAllOwned(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
 	lock := lockEvents(path, true)
 	defer unlockEvents(lock)
-	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := openNoFollow(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
@@ -125,9 +125,9 @@ func appendEvents(path string, evs []Event) {
 		}
 	}
 	f.Close()
-	chownToSudoUser(filepath.Dir(path), path, path+".lock")
-	if b, err := os.ReadFile(path); err == nil && strings.Count(string(b), "\n") > maxEvents+200 {
-		_ = writeFileNoFollow(path, []byte(trimLines(string(b), maxEvents)), 0o644)
+	chownToSudoUser(path, path+".lock")
+	if b, err := readRegular(path); err == nil && strings.Count(string(b), "\n") > maxEvents+200 {
+		_ = writeFileAtomic(path, []byte(trimLines(string(b), maxEvents)), 0o600)
 	}
 }
 

@@ -84,13 +84,13 @@ func conflictDirFrom(wd string, err error) string {
 func readNeeds(dir string) []Need {
 	var out []Need
 	for _, f := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"} {
-		if b, err := os.ReadFile(dir + "/" + f); err == nil {
+		if b, err := readRegular(dir + "/" + f); err == nil {
 			for _, p := range parseComposePorts(string(b)) {
 				out = append(out, Need{p, f})
 			}
 		}
 	}
-	if b, err := os.ReadFile(dir + "/.env"); err == nil {
+	if b, err := readRegular(dir + "/.env"); err == nil {
 		for _, p := range parseEnvPorts(string(b)) {
 			out = append(out, Need{p, ".env"})
 		}
