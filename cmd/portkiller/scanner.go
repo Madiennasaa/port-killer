@@ -249,26 +249,44 @@ func parseContainerPS(out, runtime string) []PortItem {
 			if k == -1 {
 				continue
 			}
-			addr, port := hostPart[:k], hostPart[k+1:]
+			addr := hostPart[:k]
+			for _, port := range expandPortRange(hostPart[k+1:]) {
+				key := proto + "-" + port + "-" + id
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
 
-			key := proto + "-" + port + "-" + id
-			if seen[key] {
-				continue
+				items = append(items, PortItem{
+					Proto:   proto,
+					Addr:    addr,
+					Port:    port,
+					Process: runtime + ":" + name,
+					PID:     id,
+					Uptime:  uptime,
+					Source:  runtime,
+				})
 			}
-			seen[key] = true
-
-			items = append(items, PortItem{
-				Proto:   proto,
-				Addr:    addr,
-				Port:    port,
-				Process: runtime + ":" + name,
-				PID:     id,
-				Uptime:  uptime,
-				Source:  runtime,
-			})
 		}
 	}
 	return items
+}
+
+// maxPublishedRange bounds how many rows one published port range expands to.
+const maxPublishedRange = 1024
+
+// expandPortRange (pure) turns a published host port ("80" or "8000-8002")
+// into its individual ports. Invalid or oversized ranges yield nothing.
+func expandPortRange(spec string) []string {
+	lo, hi, err := parsePortRange(spec)
+	if err != nil || hi-lo >= maxPublishedRange {
+		return nil
+	}
+	out := make([]string, 0, hi-lo+1)
+	for p := lo; p <= hi; p++ {
+		out = append(out, strconv.Itoa(p))
+	}
+	return out
 }
 
 // parseProcessInfos extracts every (pid, name) pair from ss users:(...) data.
