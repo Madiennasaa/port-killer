@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/user"
 	"reflect"
 	"testing"
 )
@@ -55,7 +56,12 @@ func TestOwnerHomeSelf(t *testing.T) {
 	if os.Getenv("SUDO_USER") != "" {
 		t.Skip("dijalankan via sudo")
 	}
-	want, _ := os.UserHomeDir()
+	// ownerHome reads the passwd entry, not $HOME (which TestMain moves).
+	u, err := user.Current()
+	if err != nil {
+		t.Skip(err)
+	}
+	want := u.HomeDir
 	if got := ownerHome(os.Getpid()); got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
