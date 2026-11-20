@@ -316,6 +316,9 @@ func restartOne(r Restartable) error {
 
 func restartHost(r Restartable) error {
 	c := exec.Command(restartBinary(r), r.Cmd[1:]...)
+	// Keep the original argv[0] even when launching the captured exe:
+	// multi-call binaries (busybox and friends) dispatch on it.
+	c.Args[0] = r.Cmd[0]
 	c.Dir = r.Cwd
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	c.Env = r.Env
