@@ -32,10 +32,12 @@ func healthKey(proto, addr, port, pid string) string {
 	return proto + "-" + addr + "-" + port + "-" + pid
 }
 
-// wildcardAddrs are listen addresses that mean "every interface": dial them
-// on loopback instead.
-var wildcardAddrs = map[string]bool{
-	"": true, "0.0.0.0": true, "*": true, "::": true, "[::]": true,
+// wildcardAddrs map "every interface" listen addresses to the loopback that
+// reaches them. ss prints "*" for a dual-stack socket and "[::]" for an
+// IPv6-only one, which 127.0.0.1 can never reach.
+var wildcardAddrs = map[string]string{
+	"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "*": "127.0.0.1",
+	"::": "[::1]", "[::]": "[::1]",
 }
 
 // isIPv6Literal reports whether addr is a bare IPv6 literal that still needs
@@ -44,11 +46,25 @@ func isIPv6Literal(addr string) bool {
 	return strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[")
 }
 
-// dialTarget (pure): wildcard -> 127.0.0.1:port, bare IPv6 -> [addr]:port.
+// stripDeviceSuffix drops the "%dev" ss appends to sockets bound to a
+// device unless it is an IPv6 zone, which the dialer needs. Left on an IPv4
+// address it turns the dial into a DNS lookup of "127.0.0.53%lo".
+func stripDeviceSuffix(a string) string {
+	i := strings.LastIndex(a, "%")
+	if i < 0 {
+		return a
+	}
+	if host := a[:i]; !strings.Contains(host, ":") || strings.HasSuffix(host, "]") {
+		return host
+	}
+	return a
+}
+
+// dialTarget (pure): wildcard -> loopback:port, bare IPv6 -> [addr]:port.
 func dialTarget(addr, port string) string {
-	a := strings.TrimSpace(addr)
-	if wildcardAddrs[a] {
-		return "127.0.0.1:" + port
+	a := stripDeviceSuffix(strings.TrimSpace(addr))
+	if lo, ok := wildcardAddrs[a]; ok {
+		return lo + ":" + port
 	}
 	if isIPv6Literal(a) {
 		a = "[" + a + "]"
