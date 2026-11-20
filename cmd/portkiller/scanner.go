@@ -135,7 +135,9 @@ func parseSS(out string) []PortItem {
 
 // enrichAll fills project/cwd and the orphan flag, caching per pid.
 func enrichAll(items []PortItem) {
-	cache := make(map[string][4]string) // pid -> {cwd, project, branch, framework}
+	// pid -> the first row's enrichment. startTime is part of it: every row
+	// of a pid needs it, or stopping a later row skips the PID-reuse check.
+	cache := make(map[string]PortItem)
 	orphanCache := map[string]bool{}
 	for i := range items {
 		if items[i].IsContainer() {
@@ -144,10 +146,11 @@ func enrichAll(items []PortItem) {
 			continue
 		}
 		if v, ok := cache[items[i].PID]; ok {
-			items[i].Cwd, items[i].Project, items[i].Branch, items[i].Framework = v[0], v[1], v[2], v[3]
+			items[i].Cwd, items[i].Project, items[i].Branch, items[i].Framework = v.Cwd, v.Project, v.Branch, v.Framework
+			items[i].startTime = v.startTime
 		} else {
 			enrichProject(&items[i])
-			cache[items[i].PID] = [4]string{items[i].Cwd, items[i].Project, items[i].Branch, items[i].Framework}
+			cache[items[i].PID] = items[i]
 		}
 		if v, ok := orphanCache[items[i].PID+"|"+items[i].Proto]; ok {
 			items[i].Orphan = v
