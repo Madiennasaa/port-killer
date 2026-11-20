@@ -63,6 +63,28 @@ func cliArgError(args []string) string {
 		}
 		return fmt.Sprintf("%s needs one of %s", a, strings.Join(allowed, ", "))
 	}
+	return cliValueError(args)
+}
+
+// cliValueError (pure) checks option values once the flags themselves are
+// valid, so a typo such as "--kill notaport" exits 2 before the sudo prompt
+// instead of after the password.
+func cliValueError(args []string) string {
+	var err error
+	switch {
+	case hasFlag(args, "--watch"):
+		_, err = watchPort(args)
+	case hasFlag(args, "--restart"):
+		_, err = normalizePorts(flagArgs(args, "--restart"))
+	default:
+		_, err = normalizePorts(flagArgs(args, "--kill"))
+	}
+	if err == nil && (hasFlag(args, "--kill") || hasFlag(args, "--kill-name") || hasFlag(args, "--restart")) {
+		_, err = parseKillOpts(args, hasFlag(args, "--force"))
+	}
+	if err != nil {
+		return err.Error()
+	}
 	return ""
 }
 
